@@ -642,27 +642,27 @@ elif page == "🧠 AI 数据与发帖":
                 post_title = st.text_input("帖子标题", value=f"社区内容总结报告 - {datetime.now().strftime('%Y-%m-%d')}")
                 
                 if st.button("📢 一键发布此报告到当前频道", use_container_width=True, type="primary"):
-                with st.spinner("获取板块并发布..."):
-                    # Here we can also dynamically ask or just pick the first available for simplicity in auto-post
-                    channels = get_channel_list(g_id)
-                    channel_id = ""
-                    if channels:
-                        # Try to find a channel named "帖子" or "讨论"
-                        for c in channels:
-                            if "帖子" in c["name"] or "讨论" in c["name"] or "广场" in c["name"]:
-                                channel_id = c["id"]
-                                break
+                    with st.spinner("获取板块并发布..."):
+                        # Here we can also dynamically ask or just pick the first available for simplicity in auto-post
+                        channels = get_channel_list(g_id)
+                        channel_id = ""
+                        if channels:
+                            # Try to find a channel named "帖子" or "讨论"
+                            for c in channels:
+                                if "帖子" in c["name"] or "讨论" in c["name"] or "广场" in c["name"]:
+                                    channel_id = c["id"]
+                                    break
+                            if not channel_id:
+                                channel_id = channels[0]["id"]
+                                
                         if not channel_id:
-                            channel_id = channels[0]["id"]
-                            
-                    if not channel_id:
-                        st.error("未能找到支持发帖的板块，请检查频道配置。")
-                    else:
-                        res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": g_id, "channel_id": channel_id, "title": post_title, "content": result_text})
-                        if res.get("code") == 0 or res.get("success") is True:
-                            st.success("✅ 报告发布成功！")
+                            st.error("未能找到支持发帖的板块，请检查频道配置。")
                         else:
-                            st.error(f"❌ 发布失败: {res.get('msg', res)}")
+                            res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": g_id, "channel_id": channel_id, "title": post_title, "content": result_text})
+                            if res.get("code") == 0 or res.get("success") is True:
+                                st.success("✅ 报告发布成功！")
+                            else:
+                                st.error(f"❌ 发布失败: {res.get('msg', res)}")
 
 elif page == "🔔 自动化任务":
     st.title("🔔 自动化任务引擎")
