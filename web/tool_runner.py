@@ -26,6 +26,13 @@ def run_tool(script_rel_path: str, params: dict) -> dict:
         
     if proc.returncode != 0:
         try:
+            err_json = json.loads(proc.stdout)
+            if "error" in err_json:
+                return {"code": proc.returncode, "msg": err_json["error"], "data": None}
+            return err_json
+        except:
+            pass
+        try:
             return json.loads(proc.stderr)
         except:
             return {"code": proc.returncode, "msg": proc.stderr or proc.stdout, "data": None}
