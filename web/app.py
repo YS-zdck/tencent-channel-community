@@ -183,26 +183,32 @@ def publish_post_dialog(guild_id):
         topic = st.text_input("发帖主题")
         reqs = st.text_area("附加要求 (例如：语气幽默，不少于300字)", height=80)
         if st.button("✨ AI 生成并发布", use_container_width=True, type="primary"):
-            with st.spinner("AI 正在头脑风暴并发布..."):
-                generated = ai_helper.generate_post(topic, reqs)
-                st.text_area("生成的正文 (预览)", value=generated, height=200, disabled=True)
-                res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": selected_channel_id, "title": topic, "content": generated})
-                if res.get("code") == 0 or res.get("success") is True: 
-                    st.success("发布成功！")
-                else: 
-                    st.error(f"发布失败: {res.get('msg', res)}")
+            if not os.environ.get("OPENAI_API_KEY"):
+                st.error("⚠️ 尚未配置 OpenAI 密钥，请先在左侧菜单底部点击 [⚙️ 环境与系统配置] 填写！")
+            else:
+                with st.spinner("AI 正在头脑风暴并发布..."):
+                    generated = ai_helper.generate_post(topic, reqs)
+                    st.text_area("生成的正文 (预览)", value=generated, height=200, disabled=True)
+                    res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": selected_channel_id, "title": topic, "content": generated})
+                    if res.get("code") == 0 or res.get("success") is True: 
+                        st.success("发布成功！")
+                    else: 
+                        st.error(f"发布失败: {res.get('msg', res)}")
                     
     with tab3:
         source_data = st.text_area("输入需要总结的数据源 (例如长文章、群聊记录、新闻等)", height=150)
         if st.button("📝 总结并发布", use_container_width=True, type="primary"):
-            with st.spinner("AI 正在提炼核心内容并发布..."):
-                generated = ai_helper.analyze_data(source_data, "请总结以上内容，提取核心信息，并写成一篇适合在社区分享的帖子，条理清晰。")
-                st.text_area("生成的总结 (预览)", value=generated, height=200, disabled=True)
-                res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": selected_channel_id, "title": "今日资讯总结", "content": generated})
-                if res.get("code") == 0 or res.get("success") is True: 
-                    st.success("发布成功！")
-                else: 
-                    st.error(f"发布失败: {res.get('msg', res)}")
+            if not os.environ.get("OPENAI_API_KEY"):
+                st.error("⚠️ 尚未配置 OpenAI 密钥，请先在左侧菜单底部点击 [⚙️ 环境与系统配置] 填写！")
+            else:
+                with st.spinner("AI 正在提炼核心内容并发布..."):
+                    generated = ai_helper.analyze_data(source_data, "请总结以上内容，提取核心信息，并写成一篇适合在社区分享的帖子，条理清晰。")
+                    st.text_area("生成的总结 (预览)", value=generated, height=200, disabled=True)
+                    res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": selected_channel_id, "title": "今日资讯总结", "content": generated})
+                    if res.get("code") == 0 or res.get("success") is True: 
+                        st.success("发布成功！")
+                    else: 
+                        st.error(f"发布失败: {res.get('msg', res)}")
 
 @st.dialog("💬 发表评论", width="large")
 def comment_dialog(guild_id, feed_id, create_time, post_content):
@@ -213,7 +219,13 @@ def comment_dialog(guild_id, feed_id, create_time, post_content):
     with tab1:
         cmt_content = st.text_area("输入你的评论...", key=f"cmt_input_{feed_id}", height=150)
         if st.button("发送评论", use_container_width=True, type="primary"):
-            res = run_tool("scripts/feed/write/do_comment.py", {"guild_id": guild_id, "feed_id": feed_id, "create_time": str(create_time), "content": cmt_content})
+            res = run_tool("scripts/feed/write/do_comment.py", {
+                "guild_id": guild_id, 
+                "feed_id": feed_id, 
+                "feed_create_time": str(create_time), 
+                "comment_type": 1,
+                "content": cmt_content
+            })
             if res.get("code") == 0 or res.get("success") is True: 
                 st.success("评论成功！")
             else: 
@@ -227,14 +239,23 @@ def comment_dialog(guild_id, feed_id, create_time, post_content):
             st.write("")
             st.write("")
             if st.button("✨ 生成并发送", use_container_width=True, type="primary"):
-                with st.spinner("生成中..."):
-                    generated = ai_helper.generate_comment(post_content, style)
-                    st.success(f"**已发送:**\n{generated}")
-                    res = run_tool("scripts/feed/write/do_comment.py", {"guild_id": guild_id, "feed_id": feed_id, "create_time": str(create_time), "content": generated})
-                    if res.get("code") == 0 or res.get("success") is True: 
-                        st.success("评论成功！")
-                    else:
-                        st.error(f"发送失败: {res.get('msg', res)}")
+                if not os.environ.get("OPENAI_API_KEY"):
+                    st.error("⚠️ 尚未配置 OpenAI 密钥，请先在左侧菜单底部点击 [⚙️ 环境与系统配置] 填写！")
+                else:
+                    with st.spinner("生成中..."):
+                        generated = ai_helper.generate_comment(post_content, style)
+                        st.success(f"**已发送:**\n{generated}")
+                        res = run_tool("scripts/feed/write/do_comment.py", {
+                            "guild_id": guild_id, 
+                            "feed_id": feed_id, 
+                            "feed_create_time": str(create_time), 
+                            "comment_type": 1,
+                            "content": generated
+                        })
+                        if res.get("code") == 0 or res.get("success") is True: 
+                            st.success("评论成功！")
+                        else:
+                            st.error(f"发送失败: {res.get('msg', res)}")
 
 @st.dialog("↩️ 回复评论", width="large")
 def reply_dialog(guild_id, feed_id, create_time, comment_id, comment_content):
@@ -245,7 +266,14 @@ def reply_dialog(guild_id, feed_id, create_time, comment_id, comment_content):
     with tab1:
         reply_text = st.text_area("输入回复内容...", key=f"rep_input_{comment_id}", height=120)
         if st.button("发送回复", use_container_width=True, type="primary"):
-            res = run_tool("scripts/feed/write/do_reply.py", {"guild_id": guild_id, "feed_id": feed_id, "create_time": str(create_time), "comment_id": comment_id, "content": reply_text})
+            res = run_tool("scripts/feed/write/do_reply.py", {
+                "guild_id": guild_id, 
+                "feed_id": feed_id, 
+                "feed_create_time": str(create_time), 
+                "comment_id": comment_id, 
+                "reply_type": 1,
+                "content": reply_text
+            })
             if res.get("code") == 0 or res.get("success") is True: 
                 st.success("回复成功！")
             else: 
@@ -254,14 +282,24 @@ def reply_dialog(guild_id, feed_id, create_time, comment_id, comment_content):
     with tab2:
         style = st.selectbox("选择 AI 回复风格", ["友好", "幽默", "专业补充", "委婉反驳"], key=f"rep_style_{comment_id}")
         if st.button("✨ 生成并发送", key=f"rep_ai_{comment_id}", use_container_width=True, type="primary"):
-            with st.spinner("AI 生成中..."):
-                generated = ai_helper.generate_comment(comment_content, style)
-                st.success(f"**已发送:**\n{generated}")
-                res = run_tool("scripts/feed/write/do_reply.py", {"guild_id": guild_id, "feed_id": feed_id, "create_time": str(create_time), "comment_id": comment_id, "content": generated})
-                if res.get("code") == 0 or res.get("success") is True: 
-                    st.success("回复成功！")
-                else: 
-                    st.error(f"回复失败: {res.get('msg', res)}")
+            if not os.environ.get("OPENAI_API_KEY"):
+                st.error("⚠️ 尚未配置 OpenAI 密钥，请先在左侧菜单底部点击 [⚙️ 环境与系统配置] 填写！")
+            else:
+                with st.spinner("AI 生成中..."):
+                    generated = ai_helper.generate_comment(comment_content, style)
+                    st.success(f"**已发送:**\n{generated}")
+                    res = run_tool("scripts/feed/write/do_reply.py", {
+                        "guild_id": guild_id, 
+                        "feed_id": feed_id, 
+                        "feed_create_time": str(create_time), 
+                        "comment_id": comment_id, 
+                        "reply_type": 1,
+                        "content": generated
+                    })
+                    if res.get("code") == 0 or res.get("success") is True: 
+                        st.success("回复成功！")
+                    else: 
+                        st.error(f"回复失败: {res.get('msg', res)}")
 
 @st.dialog("👁️ 帖子详情与评论", width="large")
 def post_details_dialog(guild_id, feed_id, create_time, title, content):
@@ -693,9 +731,12 @@ elif page == "🧠 AI 数据与发帖":
             analysis_prompt = st.text_input("分析指令", value="请总结出上述帖子中的主要话题、用户活跃度及情感倾向，用条理清晰的方式输出，适合作为社区周报发布。")
             
             if st.button("🚀 开始 AI 分析", type="primary"):
-                with st.spinner("AI 正在深度思考..."):
-                    res = ai_helper.analyze_data(source_data, analysis_prompt)
-                    st.session_state.ai_analysis_result = res
+                if not os.environ.get("OPENAI_API_KEY"):
+                    st.error("⚠️ 尚未配置 OpenAI 密钥，请先在左侧菜单底部点击 [⚙️ 环境与系统配置] 填写！")
+                else:
+                    with st.spinner("AI 正在深度思考..."):
+                        res = ai_helper.analyze_data(source_data, analysis_prompt)
+                        st.session_state.ai_analysis_result = res
                     
         # Display Result and Post Button
         if st.session_state.get("ai_analysis_result"):
