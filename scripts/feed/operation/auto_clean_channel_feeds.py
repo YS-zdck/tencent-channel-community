@@ -72,6 +72,11 @@ SKILL_MANIFEST = {
                     f"本次最多返回的帖子数，默认 {DEFAULT_MAX_FEEDS}，最大 200。"
                 )
             },
+            "banned_words": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "违禁词列表，如果帖子标题或正文命中任一词汇，将自动调用删帖接口删除该帖"
+            }
         },
         "required": ["guild_id"]
     }
@@ -233,6 +238,7 @@ def run(params: dict) -> dict:
     channel_id    = int(params["channel_id"]) if params.get("channel_id") else None
     scan_interval = int(params.get("scan_interval", DEFAULT_SCAN_INTERVAL))
     max_feeds     = min(int(params.get("max_feeds", DEFAULT_MAX_FEEDS)), 200)
+    banned_words  = params.get("banned_words", [])
 
     # ---------- 计算时间窗口 ----------
     now               = int(time.time())
@@ -303,11 +309,51 @@ def run(params: dict) -> dict:
                         author_id = detail["poster"].get("id", author_id)
                 except Exception as e:
                     errors.append({"feed_id": feed_id, "error": f"获取详情失败：{e}"})
+            
+            feed_channel_id = channel_id or feed_summary.get("channelInfo", {}).get("sign", {}).get("channelId", "")
+
+            # 违禁词判断及自动删帖
+            is_deleted = False
+            hit_word = None
+            if banned_words:
+                full_text = f"{title} {content}"
+                for w in banned_words:
+                    if w in full_text:
+                        hit_word = w
+                        break
+                
+                if hit_word:
+                    # 尝试调用 del_feed 删帖
+                    arguments = {
+                        "feed": {
+                            "id": feed_id,
+                            "poster": {"id": ""},
+                            "create_time": str(feed_create_time),
+                            "channel_info": {
+                                "sign": {
+                                    "guild_id": str(guild_id),
+                                    "channel_id": str(feed_channel_id),
+                                }
+                            }
+                        }
+                    }
+                    try:
+                        del_res = call_mcp("del_feed", arguments)
+                        ret_code = (del_res.get("structuredContent") or {}).get("_meta", {}).get("AdditionalFields", {}).get("retCode", 0)
+                        if ret_code == 0:
+                            is_deleted = True
+                        else:
+                            errors.append({"feed_id": feed_id, "error": f"删帖失败，retCode: {ret_code}"})
+                    except Exception as e:
+                        errors.append({"feed_id": feed_id, "error": f"删帖请求异常：{e}"})
 
             feeds_result.append({
+                "feed_id":     feed_id,
                 "title":       title,
                 "content":     content,
                 "create_time": feed_create_time,
+                "hit_banned_word": hit_word,
+                "is_deleted":  is_deleted
             })
 
     # ---------- 构建返回 ----------

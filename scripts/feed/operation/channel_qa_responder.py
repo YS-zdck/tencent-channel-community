@@ -119,7 +119,7 @@ SKILL_MANIFEST = {
             "bot_user_id": {
                 "type": "string",
                 "description": (
-                    "Bot 用户ID（tiny_id），string，必填。"
+                    "Bot 用户ID（tiny_id），string，可选。"
                     "用于发起关键词搜索（uint64_member_tinyid）及发布回复评论"
                 )
             },
@@ -143,7 +143,7 @@ SKILL_MANIFEST = {
                 "description": "演习模式，默认 false。true=仅分析和检索，输出报告，不发布任何评论"
             },
         },
-        "required": ["guild_id", "bot_user_id"]
+        "required": ["guild_id"]
     }
 }
 
@@ -328,7 +328,7 @@ def run(params: dict) -> dict:
         return err
 
     guild_id    = int(params["guild_id"])
-    bot_user_id = str(params["bot_user_id"])
+    bot_user_id = str(params.get("bot_user_id", "0"))
     channel_id  = int(params["channel_id"]) if params.get("channel_id") else None
     scan_count  = min(int(params.get("scan_count", DEFAULT_SCAN_COUNT)), 100)
     max_refs    = min(int(params.get("max_refs", DEFAULT_MAX_REFS)), 5)

@@ -823,12 +823,13 @@ elif page == "🔔 自动化任务":
         extra_params = {}
         if "问答自动回复" in task_type:
             st.info("ℹ️ 问答自动回复逻辑：每隔设定时间拉取最新帖子，如果帖子中包含如“怎么”、“如何”、“求助”、“不知道”等疑问词汇，则会提取关键词并在频道内搜索相关旧帖，如果搜到，会把旧帖子的摘要整理成答案自动在帖子下回复。")
-            bot_user_id = st.text_input("您的用户 ID (TinyID)，用于发起回复身份", value="请在【频道与成员】页面获取你的TinyID")
-            extra_params["bot_user_id"] = bot_user_id
         elif "内容巡检扫描" in task_type:
-            st.info("ℹ️ 内容巡检逻辑：每隔设定时间拉取最新帖子返回。如果你想要配置特定违禁词，这个脚本本身是设计为**给外部 AI 智能体调用**的（AI 拿到返回列表后自己判断并调用删除接口）。如果你希望内置删帖，请自行二次开发。")
+            st.info("ℹ️ 内容巡检逻辑：每隔设定时间拉取最新帖子，若发现包含设定违禁词的帖子，则会自动调用底层接口将其删除。")
             scan_interval = st.number_input("扫描过去多少分钟的帖子？", value=60)
+            banned_words_input = st.text_input("设置违禁词（多个词用逗号分隔，留空则仅拉取不删帖）", placeholder="例如: 加微,兼职,代刷")
             extra_params["scan_interval"] = scan_interval
+            if banned_words_input.strip():
+                extra_params["banned_words"] = [w.strip() for w in banned_words_input.split(",") if w.strip()]
         elif "自动点赞" in task_type:
             st.info("ℹ️ 自动点赞逻辑：每隔设定时间拉取频道最新帖子（单次约 20 条），并为它们逐一点赞，适合保持社区活跃度。")
         
