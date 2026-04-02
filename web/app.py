@@ -686,60 +686,53 @@ elif page == "🧠 AI 数据与发帖":
         st.warning("👈 请先在左侧选择一个频道！")
         st.stop()
         
-    st.markdown("通过选取近期帖子进行内容聚合分析，并将总结结果一键发帖到频道。")
+    st.markdown("在这里，你可以拉取近期的帖子，自由勾选你想分析的内容，交给 AI 进行总结，并一键发帖回社区。")
     
     with st.container(border=True):
-        st.subheader("1. 获取待分析数据")
-        tab1, tab2 = st.tabs(["🕒 按时间段拉取", "🗂️ 手动选择帖子"])
+        st.subheader("1. 独立拉取并勾选帖子")
         
-        analysis_source_text = ""
-        
-        with tab1:
-            col1, col2 = st.columns(2)
-            with col1:
-                days = st.number_input("拉取过去几天的帖子?", min_value=1, max_value=30, value=7)
-            with col2:
-                st.write("")
-                st.write("")
-                if st.button("拉取帖子内容", use_container_width=True):
-                    with st.spinner("正在获取并组装数据..."):
-                        res = run_tool("scripts/feed/read/get_guild_feeds.py", {"guild_id": g_id})
-                        if res.get("code") == 0:
-                            feeds = res.get("data", {}).get("feeds", res.get("data", {}).get("vecFeed", []))
-                            
-                            # Filter by time (approximated by simple count for now since get_guild_feeds might not support strict time bounds easily)
-                            # In a real scenario we'd check createTime
-                            assembled_text = ""
-                            for f in feeds[:20]: # limit to 20 for prompt size
-                                info = f.get("feed_info", f.get("feedInfo", {}))
-                                assembled_text += f"标题: {info.get('title', '')}\n内容: {info.get('content', '')}\n---\n"
-                                
-                            st.session_state.ai_source_data = assembled_text
-                            st.success(f"成功提取了 {len(feeds[:20])} 条近期帖子作为分析素材！")
-                        else:
-                            st.error("获取失败: " + str(res.get("msg")))
-                            
-        with tab2:
-            st.write("请先在 **📰 帖子与互动** 页面加载帖子列表，然后在这里勾选：")
-            current_feeds = st.session_state.get("current_feeds", [])
-            if not current_feeds:
-                st.info("暂无加载的帖子，请先去帖子管理页拉取。")
-            else:
-                selected_contents = []
-                for idx, f in enumerate(current_feeds):
-                    info = f.get("feed_info", f.get("feedInfo", {}))
-                    fid = info.get("feed_id", info.get("feedId", f"unknown_{idx}"))
-                    title = info.get("title", f.get("title", "无标题"))
-                    content = f.get("content_snippet", info.get("content", "无内容"))
-                    if st.checkbox(f"**{title}** - {content[:50]}...", key=f"sel_{fid}_{idx}"):
-                        selected_contents.append(f"标题: {title}\n内容: {content}")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            fetch_limit = st.number_input("一次性拉取最新多少条帖子？", min_value=5, max_value=50, value=20)
+        with col2:
+            st.write("")
+            st.write("")
+            if st.button("📥 拉取最新帖子", use_container_width=True, type="primary"):
+                with st.spinner("正在直接从接口拉取数据..."):
+                    res = run_tool("scripts/feed/read/get_guild_feeds.py", {"guild_id": g_id})
+                    if res.get("code") == 0 or res.get("success") is True:
+                        data = res.get("data", {})
+                        feeds = data.get("feeds", data.get("vecFeed", []))
+                        st.session_state.ai_analysis_feeds = feeds[:fetch_limit]
+                        st.success(f"✅ 成功拉取 {len(st.session_state.ai_analysis_feeds)} 条帖子！")
+                    else:
+                        st.error("获取失败: " + str(res.get("msg", res)))
                         
-                if st.button("将选中的帖子作为分析素材"):
-                    st.session_state.ai_source_data = "\n---\n".join(selected_contents)
-                    st.success(f"已选中 {len(selected_contents)} 条帖子！")
+        # Display list of feeds for selection
+        available_feeds = st.session_state.get("ai_analysis_feeds", [])
+        if available_feeds:
+            st.markdown("---")
+            st.markdown("**请勾选你想放入 AI 分析素材库的帖子：**")
+            
+            selected_contents = []
+            for idx, f in enumerate(available_feeds):
+                info = f.get("feed_info", f.get("feedInfo", f))
+                fid = info.get("feed_id", info.get("feedId", f"unknown_{idx}"))
+                title = info.get("title", f.get("title", "无标题"))
+                content = f.get("content_snippet", info.get("content", "无内容"))
+                
+                # Checkbox for each feed
+                if st.checkbox(f"📄 **{title}** - {content[:80]}...", key=f"ai_sel_{fid}_{idx}", value=True):
+                    selected_contents.append(f"标题: {title}\n内容: {content}")
+                    
+            if st.button("➕ 确认选中并生成分析素材", use_container_width=True):
+                st.session_state.ai_source_data = "\n---\n".join(selected_contents)
+                st.success(f"已成功将 {len(selected_contents)} 条帖子合并为分析素材！请在下方查看或修改。")
+        else:
+            st.info("👆 请先点击上方按钮拉取帖子列表。")
                     
     # Display Source Data Text Area
-    source_data = st.text_area("数据源预览 (可手动修改)", value=st.session_state.get("ai_source_data", ""), height=150)
+    source_data = st.text_area("数据源预览 (你可以手动修改、补充或粘贴其他内容)", value=st.session_state.get("ai_source_data", ""), height=200)
     
     if source_data:
         with st.container(border=True):
