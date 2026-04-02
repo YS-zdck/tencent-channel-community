@@ -323,11 +323,15 @@ if page == "📊 数据仪表盘":
         st.subheader("当前频道资料概览")
         with st.spinner("正在加载频道信息..."):
             res = run_tool("scripts/manage/read/get_guild_info.py", {"guild_id": g_id})
-            if res.get("code") == 0:
+            if res.get("code") == 0 or res.get("success") is True:
                 data = res.get("data", {})
                 info_list = data.get("guildInfos", data.get("guild_infos", []))
+                if not info_list and "guildInfo" in data:
+                    # fallback to some other possible structure
+                    info_list = [data]
+                    
                 if info_list:
-                    info = info_list[0].get("guildInfo", info_list[0].get("guild_info", {}))
+                    info = info_list[0].get("guildInfo", info_list[0].get("guild_info", info_list[0]))
                     col1, col2 = st.columns([1, 2])
                     with col1:
                         if info.get("avatarUrl"):
@@ -384,19 +388,22 @@ elif page == "📰 帖子与互动":
     if st.session_state.get("feed_action") == "load":
         with st.spinner("正在获取帖子列表..."):
             res = run_tool("scripts/feed/read/get_guild_feeds.py", {"guild_id": g_id})
-            if res.get("code") == 0:
-                feeds = res.get("data", {}).get("feeds", res.get("data", {}).get("vecFeed", []))
+            # Some scripts return code:0, others return success:true
+            if res.get("code") == 0 or res.get("success") is True:
+                data = res.get("data", {})
+                feeds = data.get("feeds", data.get("vecFeed", []))
                 st.session_state.current_feeds = feeds
             else:
-                st.error("获取失败: " + str(res.get("msg")))
+                st.error("获取失败: " + str(res.get("msg", res)))
     elif st.session_state.get("feed_action") == "search":
         with st.spinner("正在搜索..."):
             res = run_tool("scripts/feed/read/search_guild_feeds.py", {"guild_id": g_id, "keyword": st.session_state.search_kw})
-            if res.get("code") == 0:
-                feeds = res.get("data", {}).get("feeds", res.get("data", {}).get("vecFeed", []))
+            if res.get("code") == 0 or res.get("success") is True:
+                data = res.get("data", {})
+                feeds = data.get("feeds", data.get("vecFeed", []))
                 st.session_state.current_feeds = feeds
             else:
-                st.error("搜索失败: " + str(res.get("msg")))
+                st.error("搜索失败: " + str(res.get("msg", res)))
     else:
         # Load from session state if available
         feeds = st.session_state.get("current_feeds", [])
@@ -405,10 +412,13 @@ elif page == "📰 帖子与互动":
     if feeds:
         st.markdown(f"### 🗂️ 结果列表 (共 {len(feeds)} 条)")
         for f in feeds:
+            # new struct has flat fields, old struct has feed_info
             feed_info = f.get("feed_info", f.get("feedInfo", f))
             feed_id = feed_info.get("feed_id", feed_info.get("feedId", ""))
-            title = feed_info.get("title", "无标题")
-            content = feed_info.get("content", "无内容")
+            title = feed_info.get("title", f.get("title", "无标题"))
+            
+            # Use content_snippet or fallback to content
+            content = f.get("content_snippet", feed_info.get("content", "无内容"))
             
             with st.container(border=True):
                 st.markdown(f"#### {title}")
@@ -435,80 +445,80 @@ elif page == "👥 频道与成员":
     
     if not g_id:
         st.warning("👈 请先在左侧选择一个频道！")
-        st.stop()
+        # stop rendering rest of the page, but allow creating guild below
+    else:
+        tab1, tab2 = st.tabs(["🏛️ 频道操作", "🧑‍🤝‍🧑 成员列表与管理"])
         
-    tab1, tab2 = st.tabs(["🏛️ 频道操作", "🧑‍🤝‍🧑 成员列表与管理"])
-    
-    with tab1:
-        with st.container(border=True):
-            st.subheader("创建新频道")
-            create_name = st.text_input("新频道名称")
-            create_profile = st.text_area("新频道简介")
-            is_public = st.checkbox("公开频道", value=True)
-            col_c1, col_c2 = st.columns(2)
-            with col_c1:
-                if st.button("预览创建效果"):
-                    res = run_tool("scripts/manage/read/preview_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
-                    st.json(res)
-            with col_c2:
-                if st.button("实际创建该频道", type="primary"):
-                    res = run_tool("scripts/manage/write/create_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
-                    st.json(res)
-            
-    with tab2:
-        with st.container(border=True):
-            col_m1, col_m2 = st.columns([3, 1])
-            with col_m1:
-                keyword = st.text_input("搜索成员昵称", placeholder="留空则获取全部")
-            with col_m2:
-                st.write("")
-                st.write("")
-                if st.button("获取/搜索成员", use_container_width=True, type="primary"):
-                    if keyword:
-                        res = run_tool("scripts/manage/read/guild_member_search.py", {"guild_id": g_id, "keyword": keyword})
-                    else:
-                        res = run_tool("scripts/manage/read/get_guild_member_list.py", {"guild_id": g_id})
-                    
-                    if res.get("code") == 0:
-                        st.session_state.current_members = res.get("data", {})
-                    else:
-                        st.error("获取失败: " + str(res.get("msg")))
-            
-            members_data = st.session_state.get("current_members", {})
-            if members_data:
-                # support new structure: owners, admins, members, robots
-                all_members = []
-                for group in ["owners", "admins", "members", "robots"]:
-                    all_members.extend(members_data.get(group, []))
-                
-                # fallback for old structure
-                if not all_members:
-                    all_members = members_data.get("members", members_data.get("vecMember", []))
-                    
-                if not all_members:
-                    st.info("未找到成员。")
-                else:
-                    st.write(f"找到 {len(all_members)} 名成员：")
-                    for m in all_members:
-                        # try parse new structure first, then fallback to old
-                        nick = m.get("昵称", m.get("member_info", {}).get("nick_name", "未知"))
-                        tiny_id = m.get("tinyid", m.get("member_info", {}).get("member_tinyid", ""))
-                        join_time = m.get("加入时间", m.get("member_info", {}).get("join_time_human", "未知"))
+        with tab1:
+            with st.container(border=True):
+                col_m1, col_m2 = st.columns([3, 1])
+                with col_m1:
+                    keyword = st.text_input("搜索成员昵称", placeholder="留空则获取全部")
+                with col_m2:
+                    st.write("")
+                    st.write("")
+                    if st.button("获取/搜索成员", use_container_width=True, type="primary"):
+                        if keyword:
+                            res = run_tool("scripts/manage/read/guild_member_search.py", {"guild_id": g_id, "keyword": keyword})
+                        else:
+                            res = run_tool("scripts/manage/read/get_guild_member_list.py", {"guild_id": g_id})
                         
-                        with st.expander(f"👤 {nick} (TinyID: {tiny_id})"):
-                            st.write(f"加入时间: {join_time}")
-                            col_a1, col_a2 = st.columns(2)
-                            with col_a1:
-                                shutup_time = st.number_input("禁言时间(秒，0为解除)", min_value=0, value=60, key=f"shutup_{tiny_id}")
-                                if st.button("禁言/解禁", key=f"btn_shutup_{tiny_id}"):
-                                    res = run_tool("scripts/manage/write/modify_member_shut_up.py", {"guild_id": g_id, "member_tinyid": tiny_id, "shutup_time": shutup_time})
-                                    st.json(res)
-                            with col_a2:
-                                st.write("")
-                                st.write("")
-                                if st.button("踢出频道", key=f"btn_kick_{tiny_id}"):
-                                    res = run_tool("scripts/manage/write/kick_guild_member.py", {"guild_id": g_id, "member_tinyid": tiny_id})
-                                    st.json(res)
+                        if res.get("code") == 0 or res.get("success") is True:
+                            st.session_state.current_members = res.get("data", {})
+                        else:
+                            st.error("获取失败: " + str(res.get("msg", res)))
+                
+                members_data = st.session_state.get("current_members", {})
+                if members_data:
+                    # support new structure: owners, admins, members, robots
+                    all_members = []
+                    for group in ["owners", "admins", "members", "robots"]:
+                        all_members.extend(members_data.get(group, []))
+                    
+                    # fallback for old structure
+                    if not all_members:
+                        all_members = members_data.get("members", members_data.get("vecMember", []))
+                        
+                    if not all_members:
+                        st.info("未找到成员。")
+                    else:
+                        st.write(f"找到 {len(all_members)} 名成员：")
+                        for m in all_members:
+                            # try parse new structure first, then fallback to old
+                            nick = m.get("昵称", m.get("member_info", {}).get("nick_name", "未知"))
+                            tiny_id = m.get("tinyid", m.get("member_info", {}).get("member_tinyid", ""))
+                            join_time = m.get("加入时间", m.get("member_info", {}).get("join_time_human", "未知"))
+                            
+                            with st.expander(f"👤 {nick} (TinyID: {tiny_id})"):
+                                st.write(f"加入时间: {join_time}")
+                                col_a1, col_a2 = st.columns(2)
+                                with col_a1:
+                                    shutup_time = st.number_input("禁言时间(秒，0为解除)", min_value=0, value=60, key=f"shutup_{tiny_id}")
+                                    if st.button("禁言/解禁", key=f"btn_shutup_{tiny_id}"):
+                                        res = run_tool("scripts/manage/write/modify_member_shut_up.py", {"guild_id": g_id, "member_tinyid": tiny_id, "shutup_time": shutup_time})
+                                        st.json(res)
+                                with col_a2:
+                                    st.write("")
+                                    st.write("")
+                                    if st.button("踢出频道", key=f"btn_kick_{tiny_id}"):
+                                        res = run_tool("scripts/manage/write/kick_guild_member.py", {"guild_id": g_id, "member_tinyid": tiny_id})
+                                        st.json(res)
+
+    st.divider()
+    st.subheader("🌟 创建新频道 (无需依赖当前选择)")
+    with st.container(border=True):
+        create_name = st.text_input("新频道名称")
+        create_profile = st.text_area("新频道简介")
+        is_public = st.checkbox("公开频道", value=True)
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            if st.button("预览创建效果"):
+                res = run_tool("scripts/manage/read/preview_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
+                st.json(res)
+        with col_c2:
+            if st.button("实际创建该频道", type="primary"):
+                res = run_tool("scripts/manage/write/create_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
+                st.json(res)
 
 elif page == "🧠 AI 数据与发帖":
     st.title("🧠 AI 深度分析与自动化发帖")
