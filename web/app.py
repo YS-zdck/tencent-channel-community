@@ -476,16 +476,24 @@ elif page == "👥 频道与成员":
             
             members_data = st.session_state.get("current_members", {})
             if members_data:
-                m_list = members_data.get("members", members_data.get("vecMember", []))
-                if not m_list:
+                # support new structure: owners, admins, members, robots
+                all_members = []
+                for group in ["owners", "admins", "members", "robots"]:
+                    all_members.extend(members_data.get(group, []))
+                
+                # fallback for old structure
+                if not all_members:
+                    all_members = members_data.get("members", members_data.get("vecMember", []))
+                    
+                if not all_members:
                     st.info("未找到成员。")
                 else:
-                    st.write(f"找到 {len(m_list)} 名成员：")
-                    for m in m_list:
-                        m_info = m.get("member_info", m.get("memberInfo", m))
-                        nick = m_info.get("nick_name", m_info.get("nickName", "未知"))
-                        tiny_id = m_info.get("member_tinyid", m_info.get("memberTinyid", ""))
-                        join_time = m_info.get("join_time_human", "未知")
+                    st.write(f"找到 {len(all_members)} 名成员：")
+                    for m in all_members:
+                        # try parse new structure first, then fallback to old
+                        nick = m.get("昵称", m.get("member_info", {}).get("nick_name", "未知"))
+                        tiny_id = m.get("tinyid", m.get("member_info", {}).get("member_tinyid", ""))
+                        join_time = m.get("加入时间", m.get("member_info", {}).get("join_time_human", "未知"))
                         
                         with st.expander(f"👤 {nick} (TinyID: {tiny_id})"):
                             st.write(f"加入时间: {join_time}")

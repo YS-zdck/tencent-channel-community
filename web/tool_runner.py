@@ -15,7 +15,7 @@ def run_tool(script_rel_path: str, params: dict) -> dict:
     
     try:
         proc = subprocess.run(
-            ["python3", str(script_path)],
+            [str(BASE_DIR / "venv" / "bin" / "python"), str(script_path)],
             input=json.dumps(params),
             capture_output=True,
             text=True,
