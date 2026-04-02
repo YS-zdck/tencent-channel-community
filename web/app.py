@@ -205,7 +205,7 @@ def publish_post_dialog(guild_id):
                     st.error(f"发布失败: {res.get('msg', res)}")
 
 @st.dialog("💬 发表评论", width="large")
-def comment_dialog(guild_id, feed_id, post_content):
+def comment_dialog(guild_id, feed_id, create_time, post_content):
     st.markdown("### 原帖内容")
     st.info(post_content[:300] + ("..." if len(post_content)>300 else ""))
     
@@ -213,11 +213,11 @@ def comment_dialog(guild_id, feed_id, post_content):
     with tab1:
         cmt_content = st.text_area("输入你的评论...", key=f"cmt_input_{feed_id}", height=150)
         if st.button("发送评论", use_container_width=True, type="primary"):
-            res = run_tool("scripts/feed/write/do_comment.py", {"guild_id": guild_id, "feed_id": feed_id, "content": cmt_content})
-            if res.get("code") == 0: 
+            res = run_tool("scripts/feed/write/do_comment.py", {"guild_id": guild_id, "feed_id": feed_id, "create_time": str(create_time), "content": cmt_content})
+            if res.get("code") == 0 or res.get("success") is True: 
                 st.success("评论成功！")
             else: 
-                st.error(f"评论失败: {res.get('msg')}")
+                st.error(f"评论失败: {res.get('msg', res)}")
                 
     with tab2:
         col1, col2 = st.columns([1, 2])
@@ -230,12 +230,14 @@ def comment_dialog(guild_id, feed_id, post_content):
                 with st.spinner("生成中..."):
                     generated = ai_helper.generate_comment(post_content, style)
                     st.success(f"**已发送:**\n{generated}")
-                    res = run_tool("scripts/feed/write/do_comment.py", {"guild_id": guild_id, "feed_id": feed_id, "content": generated})
-                    if res.get("code") != 0: 
-                        st.error(f"发送失败: {res.get('msg')}")
+                    res = run_tool("scripts/feed/write/do_comment.py", {"guild_id": guild_id, "feed_id": feed_id, "create_time": str(create_time), "content": generated})
+                    if res.get("code") == 0 or res.get("success") is True: 
+                        st.success("评论成功！")
+                    else:
+                        st.error(f"发送失败: {res.get('msg', res)}")
 
 @st.dialog("↩️ 回复评论", width="large")
-def reply_dialog(guild_id, feed_id, comment_id, comment_content):
+def reply_dialog(guild_id, feed_id, create_time, comment_id, comment_content):
     st.markdown("### 回复目标")
     st.info(comment_content)
     
@@ -243,11 +245,11 @@ def reply_dialog(guild_id, feed_id, comment_id, comment_content):
     with tab1:
         reply_text = st.text_area("输入回复内容...", key=f"rep_input_{comment_id}", height=120)
         if st.button("发送回复", use_container_width=True, type="primary"):
-            res = run_tool("scripts/feed/write/do_reply.py", {"guild_id": guild_id, "feed_id": feed_id, "comment_id": comment_id, "content": reply_text})
-            if res.get("code") == 0: 
+            res = run_tool("scripts/feed/write/do_reply.py", {"guild_id": guild_id, "feed_id": feed_id, "create_time": str(create_time), "comment_id": comment_id, "content": reply_text})
+            if res.get("code") == 0 or res.get("success") is True: 
                 st.success("回复成功！")
             else: 
-                st.error(f"回复失败: {res.get('msg')}")
+                st.error(f"回复失败: {res.get('msg', res)}")
                 
     with tab2:
         style = st.selectbox("选择 AI 回复风格", ["友好", "幽默", "专业补充", "委婉反驳"], key=f"rep_style_{comment_id}")
@@ -255,12 +257,14 @@ def reply_dialog(guild_id, feed_id, comment_id, comment_content):
             with st.spinner("AI 生成中..."):
                 generated = ai_helper.generate_comment(comment_content, style)
                 st.success(f"**已发送:**\n{generated}")
-                res = run_tool("scripts/feed/write/do_reply.py", {"guild_id": guild_id, "feed_id": feed_id, "comment_id": comment_id, "content": generated})
-                if res.get("code") != 0: 
-                    st.error(f"回复失败: {res.get('msg')}")
+                res = run_tool("scripts/feed/write/do_reply.py", {"guild_id": guild_id, "feed_id": feed_id, "create_time": str(create_time), "comment_id": comment_id, "content": generated})
+                if res.get("code") == 0 or res.get("success") is True: 
+                    st.success("回复成功！")
+                else: 
+                    st.error(f"回复失败: {res.get('msg', res)}")
 
 @st.dialog("👁️ 帖子详情与评论", width="large")
-def post_details_dialog(guild_id, feed_id, title, content):
+def post_details_dialog(guild_id, feed_id, create_time, title, content):
     st.markdown(f"## {title}")
     st.write(content)
     st.divider()
@@ -289,7 +293,7 @@ def post_details_dialog(guild_id, feed_id, title, content):
                 with st.container(border=True):
                     st.markdown(f"**👤 {author}**:  \n{cmt_content}")
                     if st.button("↩️ 回复此评论", key=f"btn_rep_{cmt_id}"):
-                        reply_dialog(guild_id, feed_id, cmt_id, cmt_content)
+                        reply_dialog(guild_id, feed_id, create_time, cmt_id, cmt_content)
     else:
         st.error("获取评论失败: " + str(res.get("msg", res)))
 
@@ -340,6 +344,7 @@ with st.sidebar:
     
     page = st.radio("导航菜单", [
         "📊 数据仪表盘", 
+        "🌟 创建新频道",
         "📰 帖子与互动", 
         "👥 频道与成员", 
         "🧠 AI 数据与发帖",
@@ -404,11 +409,29 @@ if page == "📊 数据仪表盘":
     st.divider()
     st.subheader("💡 快速上手指南")
     st.markdown("""
-    1. **第一步**：在左侧栏上方选择你需要管理的 **目标频道**。
+    1. **第一步**：在左侧栏上方选择你需要管理的 **目标频道**，或者通过 **🌟 创建新频道** 新建一个。
     2. **第二步**：前往左侧 **📰 帖子与互动** 浏览或发布帖子。
     3. **第三步**：利用 **🧠 AI 数据与发帖** 模块对近期内容进行智能分析。
     """)
 
+elif page == "🌟 创建新频道":
+    st.title("🌟 创建新频道")
+    st.markdown("无需依赖左侧选中的目标频道，您可以直接在此处创建一个全新的频道。")
+    
+    with st.container(border=True):
+        create_name = st.text_input("新频道名称")
+        create_profile = st.text_area("新频道简介")
+        is_public = st.checkbox("公开频道", value=True)
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            if st.button("预览创建效果"):
+                res = run_tool("scripts/manage/read/preview_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
+                st.json(res)
+        with col_c2:
+            if st.button("实际创建该频道", type="primary"):
+                res = run_tool("scripts/manage/write/create_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
+                st.json(res)
+                
 elif page == "📰 帖子与互动":
     st.title("📰 帖子管理与社区互动")
     
@@ -471,6 +494,7 @@ elif page == "📰 帖子与互动":
             feed_info = f.get("feed_info", f.get("feedInfo", f))
             feed_id = feed_info.get("feed_id", feed_info.get("feedId", ""))
             title = feed_info.get("title", f.get("title", "无标题"))
+            create_time = feed_info.get("create_time", feed_info.get("createTime", f.get("create_time", f.get("createTime", 0))))
             
             # Use content_snippet or fallback to content
             content = f.get("content_snippet", feed_info.get("content", "无内容"))
@@ -488,10 +512,10 @@ elif page == "📰 帖子与互动":
                         else: st.toast("❌ 点赞失败！")
                 with c_act2:
                     if st.button("💬 评论/AI评论", key=f"cmt_{feed_id}", use_container_width=True):
-                        comment_dialog(g_id, feed_id, content)
+                        comment_dialog(g_id, feed_id, create_time, content)
                 with c_act3:
                     if st.button("👁️ 详情与回复", key=f"det_{feed_id}", use_container_width=True):
-                        post_details_dialog(g_id, feed_id, title, content)
+                        post_details_dialog(g_id, feed_id, create_time, title, content)
     elif st.session_state.get("feed_action"):
         st.info("👻 暂无数据或没有找到相关帖子。")
 
@@ -500,14 +524,12 @@ elif page == "👥 频道与成员":
     
     if not g_id:
         st.warning("👈 请先在左侧选择一个频道！")
-        # stop rendering rest of the page, but allow creating guild below
-    else:
-        tab1, tab2 = st.tabs(["🏛️ 频道操作", "🧑‍🤝‍🧑 成员列表与管理"])
-        
-        with tab1:
-            with st.container(border=True):
-                col_m1, col_m2 = st.columns([3, 1])
-                with col_m1:
+        # stop rendering rest of the page
+        st.stop()
+    
+    with st.container(border=True):
+        col_m1, col_m2 = st.columns([3, 1])
+        with col_m1:
                     keyword = st.text_input("搜索成员昵称", placeholder="留空则获取全部")
                 with col_m2:
                     st.write("")
@@ -544,36 +566,20 @@ elif page == "👥 频道与成员":
                             tiny_id = m.get("tinyid", m.get("member_info", {}).get("member_tinyid", ""))
                             join_time = m.get("加入时间", m.get("member_info", {}).get("join_time_human", "未知"))
                             
-                            with st.expander(f"👤 {nick} (TinyID: {tiny_id})"):
-                                st.write(f"加入时间: {join_time}")
-                                col_a1, col_a2 = st.columns(2)
-                                with col_a1:
-                                    shutup_time = st.number_input("禁言时间(秒，0为解除)", min_value=0, value=60, key=f"shutup_{tiny_id}")
-                                    if st.button("禁言/解禁", key=f"btn_shutup_{tiny_id}"):
-                                        res = run_tool("scripts/manage/write/modify_member_shut_up.py", {"guild_id": g_id, "member_tinyid": tiny_id, "shutup_time": shutup_time})
-                                        st.json(res)
-                                with col_a2:
-                                    st.write("")
-                                    st.write("")
-                                    if st.button("踢出频道", key=f"btn_kick_{tiny_id}"):
-                                        res = run_tool("scripts/manage/write/kick_guild_member.py", {"guild_id": g_id, "member_tinyid": tiny_id})
-                                        st.json(res)
-
-    st.divider()
-    st.subheader("🌟 创建新频道 (无需依赖当前选择)")
-    with st.container(border=True):
-        create_name = st.text_input("新频道名称")
-        create_profile = st.text_area("新频道简介")
-        is_public = st.checkbox("公开频道", value=True)
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            if st.button("预览创建效果"):
-                res = run_tool("scripts/manage/read/preview_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
-                st.json(res)
-        with col_c2:
-            if st.button("实际创建该频道", type="primary"):
-                res = run_tool("scripts/manage/write/create_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
-                st.json(res)
+                        with st.expander(f"👤 {nick} (TinyID: {tiny_id})"):
+                            st.write(f"加入时间: {join_time}")
+                            col_a1, col_a2 = st.columns(2)
+                            with col_a1:
+                                shutup_time = st.number_input("禁言时间(秒，0为解除)", min_value=0, value=60, key=f"shutup_{tiny_id}")
+                                if st.button("禁言/解禁", key=f"btn_shutup_{tiny_id}"):
+                                    res = run_tool("scripts/manage/write/modify_member_shut_up.py", {"guild_id": g_id, "member_tinyid": tiny_id, "shutup_time": shutup_time})
+                                    st.json(res)
+                            with col_a2:
+                                st.write("")
+                                st.write("")
+                                if st.button("踢出频道", key=f"btn_kick_{tiny_id}"):
+                                    res = run_tool("scripts/manage/write/kick_guild_member.py", {"guild_id": g_id, "member_tinyid": tiny_id})
+                                    st.json(res)
 
 elif page == "🧠 AI 数据与发帖":
     st.title("🧠 AI 深度分析与自动化发帖")
@@ -622,12 +628,12 @@ elif page == "🧠 AI 数据与发帖":
                 st.info("暂无加载的帖子，请先去帖子管理页拉取。")
             else:
                 selected_contents = []
-                for f in current_feeds:
+                for idx, f in enumerate(current_feeds):
                     info = f.get("feed_info", f.get("feedInfo", {}))
-                    fid = info.get("feed_id", info.get("feedId", ""))
-                    title = info.get("title", "无标题")
-                    content = info.get("content", "无内容")
-                    if st.checkbox(f"**{title}** - {content[:50]}...", key=f"sel_{fid}"):
+                    fid = info.get("feed_id", info.get("feedId", f"unknown_{idx}"))
+                    title = info.get("title", f.get("title", "无标题"))
+                    content = f.get("content_snippet", info.get("content", "无内容"))
+                    if st.checkbox(f"**{title}** - {content[:50]}...", key=f"sel_{fid}_{idx}"):
                         selected_contents.append(f"标题: {title}\n内容: {content}")
                         
                 if st.button("将选中的帖子作为分析素材"):
