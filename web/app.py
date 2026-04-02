@@ -6,8 +6,13 @@ from datetime import datetime, timedelta
 from tool_runner import run_tool
 import ai_helper
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+BASE_DIR = Path(__file__).parent.parent.resolve()
+ENV_FILE = BASE_DIR / ".env"
+
+load_dotenv(dotenv_path=ENV_FILE)
+os.environ["QQ_AI_CONNECT_DOTENV"] = str(ENV_FILE)
 
 st.set_page_config(page_title="频道控制台", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
 
@@ -58,7 +63,7 @@ def config_dialog():
     
     st.divider()
     if st.button("💾 保存配置", use_container_width=True, type="primary"):
-        with open(".env", "w") as f:
+        with open(ENV_FILE, "w") as f:
             f.write(f'QQ_AI_CONNECT_TOKEN="{token}"\n')
             f.write(f'OPENAI_API_KEY="{openai_key}"\n')
             f.write(f'OPENAI_BASE_URL="{openai_url}"\n')
@@ -67,6 +72,7 @@ def config_dialog():
         os.environ["OPENAI_API_KEY"] = openai_key
         os.environ["OPENAI_BASE_URL"] = openai_url
         os.environ["OPENAI_MODEL"] = openai_model
+        st.session_state.my_guilds = [] # Force reload guilds
         st.success("✅ 配置已保存并生效！")
         st.rerun()
 
