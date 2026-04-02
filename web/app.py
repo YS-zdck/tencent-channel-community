@@ -62,19 +62,32 @@ def config_dialog():
     openai_model = st.text_input("OPENAI_MODEL (可选)", value=os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo"))
     
     st.divider()
-    if st.button("💾 保存配置", use_container_width=True, type="primary"):
-        with open(ENV_FILE, "w") as f:
-            f.write(f'QQ_AI_CONNECT_TOKEN="{token}"\n')
-            f.write(f'OPENAI_API_KEY="{openai_key}"\n')
-            f.write(f'OPENAI_BASE_URL="{openai_url}"\n')
-            f.write(f'OPENAI_MODEL="{openai_model}"\n')
-        os.environ["QQ_AI_CONNECT_TOKEN"] = token
-        os.environ["OPENAI_API_KEY"] = openai_key
-        os.environ["OPENAI_BASE_URL"] = openai_url
-        os.environ["OPENAI_MODEL"] = openai_model
-        st.session_state.my_guilds = [] # Force reload guilds
-        st.success("✅ 配置已保存并生效！")
-        st.rerun()
+    col_save, col_verify = st.columns(2)
+    with col_save:
+        if st.button("💾 保存配置", use_container_width=True, type="primary"):
+            with open(ENV_FILE, "w") as f:
+                f.write(f'QQ_AI_CONNECT_TOKEN="{token}"\n')
+                f.write(f'OPENAI_API_KEY="{openai_key}"\n')
+                f.write(f'OPENAI_BASE_URL="{openai_url}"\n')
+                f.write(f'OPENAI_MODEL="{openai_model}"\n')
+            os.environ["QQ_AI_CONNECT_TOKEN"] = token
+            os.environ["OPENAI_API_KEY"] = openai_key
+            os.environ["OPENAI_BASE_URL"] = openai_url
+            os.environ["OPENAI_MODEL"] = openai_model
+            st.session_state.my_guilds = [] # Force reload guilds
+            st.success("✅ 配置已保存并生效！")
+            st.rerun()
+            
+    with col_verify:
+        if st.button("🔌 验证 Token 连通性", use_container_width=True):
+            with st.spinner("正在验证..."):
+                res = run_tool("scripts/manage/read/verify_qq_ai_connect_token.py", {})
+                if res.get("code") == 0 and res.get("data", {}).get("valid"):
+                    st.success("✅ 验证成功：Token 可正常连接 QQ 频道！")
+                    st.json(res.get("data"))
+                else:
+                    st.error("❌ 验证失败！请检查 Token 是否有效。")
+                    st.json(res)
 
 @st.dialog("📝 发布新帖子", width="large")
 def publish_post_dialog(guild_id):
