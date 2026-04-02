@@ -1,6 +1,8 @@
 import streamlit as st
 import os
 import json
+import time
+from datetime import datetime, timedelta
 from tool_runner import run_tool
 import ai_helper
 from dotenv import load_dotenv
@@ -19,6 +21,25 @@ div[data-testid="stMetricValue"] { font-size: 2.2rem; color: #1f77b4; font-weigh
 h1, h2, h3, h4 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 </style>
 """, unsafe_allow_html=True)
+
+# ---- Helper Functions ----
+def load_my_guilds():
+    if "my_guilds" not in st.session_state:
+        st.session_state.my_guilds = []
+        
+    res = run_tool("scripts/manage/read/get_my_join_guild_info.py", {})
+    if res.get("code") == 0:
+        guilds = res.get("data", {}).get("guilds", res.get("data", {}).get("guildInfos", []))
+        options = []
+        for g in guilds:
+            info = g.get("guildInfo", g.get("guild_info", g))
+            gid = info.get("guildId", info.get("guild_id", ""))
+            gname = info.get("guildName", info.get("guild_name", "未知频道"))
+            if gid:
+                options.append({"id": str(gid), "name": f"{gname} ({gid})"})
+        st.session_state.my_guilds = options
+        return options
+    return []
 
 # ---- Dialogs ----
 @st.dialog("⚙️ 环境与系统配置", width="large")
@@ -178,39 +199,72 @@ def post_details_dialog(guild_id, feed_id, title, content):
 with st.sidebar:
     st.title("🚀 频道控制台")
     st.markdown("高效、智能的腾讯频道社区管理端")
+    
+    # Global Guild Selector
+    st.subheader("📌 目标频道选择")
+    guilds_options = load_my_guilds()
+    
+    if not guilds_options:
+        st.warning("暂未获取到频道列表，请检查 Token 并点击刷新。")
+        selected_guild = st.text_input("手动输入频道 ID", value=st.session_state.get("global_guild_id", ""))
+        if selected_guild:
+            st.session_state.global_guild_id = selected_guild
+        if st.button("🔄 刷新频道列表", use_container_width=True):
+            st.session_state.my_guilds = []
+            st.rerun()
+    else:
+        # Get index of currently selected guild
+        current_gid = st.session_state.get("global_guild_id", "")
+        default_index = 0
+        for i, g in enumerate(guilds_options):
+            if g["id"] == current_gid:
+                default_index = i
+                break
+                
+        selected_name = st.selectbox(
+            "选择操作频道", 
+            options=[g["name"] for g in guilds_options],
+            index=default_index,
+            label_visibility="collapsed"
+        )
+        
+        # Update global guild ID based on selection
+        for g in guilds_options:
+            if g["name"] == selected_name:
+                st.session_state.global_guild_id = g["id"]
+                break
+                
+        if st.button("🔄 刷新频道列表", use_container_width=True):
+            st.session_state.my_guilds = []
+            st.rerun()
+
     st.divider()
     
     page = st.radio("导航菜单", [
         "📊 数据仪表盘", 
         "📰 帖子与互动", 
         "👥 频道与成员", 
-        "🔔 自动化与任务"
+        "🧠 AI 数据与发帖",
+        "🔔 自动化任务"
     ], label_visibility="collapsed")
 
     st.divider()
     if st.button("⚙️ 环境与系统配置", use_container_width=True):
         config_dialog()
 
+# Get global guild ID
+g_id = st.session_state.get("global_guild_id", "")
+
 # ---- Main Pages ----
 if page == "📊 数据仪表盘":
     st.title("📊 数据仪表盘 Dashboard")
     st.markdown("欢迎使用腾讯频道社区控制台，为您提供直观的数据与快捷操作！")
     
-    col1, col2 = st.columns([8, 2])
-    with col2:
-        if st.button("🔄 刷新数据", use_container_width=True):
-            res = run_tool("scripts/manage/read/get_my_join_guild_info.py", {})
-            if res.get("code") == 0:
-                guilds = res.get("data", {}).get("guilds", res.get("data", {}).get("guildInfos", []))
-                st.session_state.guild_count = len(guilds)
-            else:
-                st.error("获取数据失败，请检查 Token 配置。")
-                
     st.divider()
     
     m1, m2, m3, m4 = st.columns(4)
     with m1:
-        st.metric("已加入频道数", st.session_state.get("guild_count", "--"))
+        st.metric("已加入频道数", len(st.session_state.get("my_guilds", [])) if st.session_state.get("my_guilds") else "--")
     with m2:
         token_status = "✅ 已配置" if os.environ.get("QQ_AI_CONNECT_TOKEN") else "❌ 未配置"
         st.metric("QQ Token", token_status)
@@ -218,62 +272,91 @@ if page == "📊 数据仪表盘":
         ai_status = "✅ 已连接" if os.environ.get("OPENAI_API_KEY") else "❌ 未配置"
         st.metric("AI 引擎", ai_status)
     with m4:
-        st.metric("系统服务状态", "🟢 正常")
+        st.metric("当前选中频道", g_id if g_id else "未选择")
         
+    st.divider()
+    
+    if g_id:
+        st.subheader("当前频道资料概览")
+        with st.spinner("正在加载频道信息..."):
+            res = run_tool("scripts/manage/read/get_guild_info.py", {"guild_id": g_id})
+            if res.get("code") == 0:
+                data = res.get("data", {})
+                info_list = data.get("guildInfos", data.get("guild_infos", []))
+                if info_list:
+                    info = info_list[0].get("guildInfo", info_list[0].get("guild_info", {}))
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        if info.get("avatarUrl"):
+                            st.image(info.get("avatarUrl"), width=120)
+                    with col2:
+                        st.markdown(f"### {info.get('guildName', '未知名称')}")
+                        st.markdown(f"**简介**: {info.get('profile', '无简介')}")
+                        st.markdown(f"**成员数**: {info.get('memberNum', 0)}")
+                        st.markdown(f"**创建时间**: {info.get('createTime_human', '未知')}")
+                        if data.get("share_url"):
+                            st.markdown(f"🔗 **分享链接**: [{data.get('share_url')}]({data.get('share_url')})")
+            else:
+                st.error("获取频道资料失败，请检查该频道 ID。")
+    
     st.divider()
     st.subheader("💡 快速上手指南")
     st.markdown("""
-    1. **第一步**：点击左下角 **⚙️ 环境与系统配置** 填写并保存您的 Token。
-    2. **第二步**：在当前页点击 **🔄 刷新数据** 验证是否连接成功。
-    3. **第三步**：前往左侧 **📰 帖子与互动** 或其他菜单，开始管理您的社区！
+    1. **第一步**：在左侧栏上方选择你需要管理的 **目标频道**。
+    2. **第二步**：前往左侧 **📰 帖子与互动** 浏览或发布帖子。
+    3. **第三步**：利用 **🧠 AI 数据与发帖** 模块对近期内容进行智能分析。
     """)
 
 elif page == "📰 帖子与互动":
     st.title("📰 帖子管理与社区互动")
     
+    if not g_id:
+        st.warning("👈 请先在左侧选择一个频道！")
+        st.stop()
+        
     # Top Action Bar
     with st.container(border=True):
-        st.markdown("**🔍 检索与操作**")
-        g_id = st.text_input("📍 当前操作的频道 ID (guild_id)", value=st.session_state.get("guild_id", ""))
-        st.session_state.guild_id = g_id
+        st.markdown(f"**📍 当前频道 ID**: `{g_id}`")
         
         col1, col2, col3 = st.columns([1.5, 2.5, 1.5])
         with col1:
             if st.button("🔄 加载最新帖子", use_container_width=True, type="primary"):
-                if g_id: st.session_state.feed_action = "load"
-                else: st.warning("请先填写频道 ID")
+                st.session_state.feed_action = "load"
         with col2:
             kw = st.text_input("搜索", label_visibility="collapsed", placeholder="输入关键词...")
-            if st.button("🔍 搜索包含此关键词的帖子", use_container_width=True):
-                if g_id and kw:
+            if st.button("🔍 搜索本频道帖子", use_container_width=True):
+                if kw:
                     st.session_state.feed_action = "search"
                     st.session_state.search_kw = kw
                 else:
-                    st.warning("请填写频道 ID 和搜索关键词")
+                    st.warning("请填写搜索关键词")
         with col3:
             if st.button("✍️ 快速发布新帖", use_container_width=True):
-                if not g_id: st.warning("请先填写频道 ID")
-                else: publish_post_dialog(g_id)
+                publish_post_dialog(g_id)
 
     st.divider()
     
     # Load Feeds
     feeds = []
-    if g_id:
-        if st.session_state.get("feed_action") == "load":
-            with st.spinner("正在获取帖子列表..."):
-                res = run_tool("scripts/feed/read/get_guild_feeds.py", {"guild_id": g_id})
-                if res.get("code") == 0:
-                    feeds = res.get("data", {}).get("feeds", res.get("data", {}).get("vecFeed", []))
-                else:
-                    st.error("获取失败: " + str(res.get("msg")))
-        elif st.session_state.get("feed_action") == "search":
-            with st.spinner("正在搜索..."):
-                res = run_tool("scripts/feed/read/search_guild_feeds.py", {"guild_id": g_id, "keyword": st.session_state.search_kw})
-                if res.get("code") == 0:
-                    feeds = res.get("data", {}).get("feeds", res.get("data", {}).get("vecFeed", []))
-                else:
-                    st.error("搜索失败: " + str(res.get("msg")))
+    if st.session_state.get("feed_action") == "load":
+        with st.spinner("正在获取帖子列表..."):
+            res = run_tool("scripts/feed/read/get_guild_feeds.py", {"guild_id": g_id})
+            if res.get("code") == 0:
+                feeds = res.get("data", {}).get("feeds", res.get("data", {}).get("vecFeed", []))
+                st.session_state.current_feeds = feeds
+            else:
+                st.error("获取失败: " + str(res.get("msg")))
+    elif st.session_state.get("feed_action") == "search":
+        with st.spinner("正在搜索..."):
+            res = run_tool("scripts/feed/read/search_guild_feeds.py", {"guild_id": g_id, "keyword": st.session_state.search_kw})
+            if res.get("code") == 0:
+                feeds = res.get("data", {}).get("feeds", res.get("data", {}).get("vecFeed", []))
+                st.session_state.current_feeds = feeds
+            else:
+                st.error("搜索失败: " + str(res.get("msg")))
+    else:
+        # Load from session state if available
+        feeds = st.session_state.get("current_feeds", [])
     
     # Render Feeds Card Style
     if feeds:
@@ -306,50 +389,197 @@ elif page == "📰 帖子与互动":
 
 elif page == "👥 频道与成员":
     st.title("👥 频道与成员管理")
-    tab1, tab2 = st.tabs(["🏛️ 频道基础信息", "🧑‍🤝‍🧑 成员列表管理"])
+    
+    if not g_id:
+        st.warning("👈 请先在左侧选择一个频道！")
+        st.stop()
+        
+    tab1, tab2 = st.tabs(["🏛️ 频道操作", "🧑‍🤝‍🧑 成员列表与管理"])
     
     with tab1:
         with st.container(border=True):
-            g_id = st.text_input("频道 ID", key="guild_info_id")
-            if st.button("查询频道资料", type="primary"):
-                res = run_tool("scripts/manage/read/get_guild_info.py", {"guild_id": g_id})
-                st.json(res)
+            st.subheader("创建新频道")
+            create_name = st.text_input("新频道名称")
+            create_profile = st.text_area("新频道简介")
+            is_public = st.checkbox("公开频道", value=True)
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                if st.button("预览创建效果"):
+                    res = run_tool("scripts/manage/read/preview_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
+                    st.json(res)
+            with col_c2:
+                if st.button("实际创建该频道", type="primary"):
+                    res = run_tool("scripts/manage/write/create_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
+                    st.json(res)
             
     with tab2:
         with st.container(border=True):
-            g_id_mem = st.text_input("频道 ID", key="guild_mem_id")
-            if st.button("获取成员列表", type="primary"):
-                res = run_tool("scripts/manage/read/get_guild_member_list.py", {"guild_id": g_id_mem})
-                st.json(res)
+            col_m1, col_m2 = st.columns([3, 1])
+            with col_m1:
+                keyword = st.text_input("搜索成员昵称", placeholder="留空则获取全部")
+            with col_m2:
+                st.write("")
+                st.write("")
+                if st.button("获取/搜索成员", use_container_width=True, type="primary"):
+                    if keyword:
+                        res = run_tool("scripts/manage/read/guild_member_search.py", {"guild_id": g_id, "keyword": keyword})
+                    else:
+                        res = run_tool("scripts/manage/read/get_guild_member_list.py", {"guild_id": g_id})
+                    
+                    if res.get("code") == 0:
+                        st.session_state.current_members = res.get("data", {})
+                    else:
+                        st.error("获取失败: " + str(res.get("msg")))
+            
+            members_data = st.session_state.get("current_members", {})
+            if members_data:
+                m_list = members_data.get("members", members_data.get("vecMember", []))
+                if not m_list:
+                    st.info("未找到成员。")
+                else:
+                    st.write(f"找到 {len(m_list)} 名成员：")
+                    for m in m_list:
+                        m_info = m.get("member_info", m.get("memberInfo", m))
+                        nick = m_info.get("nick_name", m_info.get("nickName", "未知"))
+                        tiny_id = m_info.get("member_tinyid", m_info.get("memberTinyid", ""))
+                        join_time = m_info.get("join_time_human", "未知")
+                        
+                        with st.expander(f"👤 {nick} (TinyID: {tiny_id})"):
+                            st.write(f"加入时间: {join_time}")
+                            col_a1, col_a2 = st.columns(2)
+                            with col_a1:
+                                shutup_time = st.number_input("禁言时间(秒，0为解除)", min_value=0, value=60, key=f"shutup_{tiny_id}")
+                                if st.button("禁言/解禁", key=f"btn_shutup_{tiny_id}"):
+                                    res = run_tool("scripts/manage/write/modify_member_shut_up.py", {"guild_id": g_id, "member_tinyid": tiny_id, "shutup_time": shutup_time})
+                                    st.json(res)
+                            with col_a2:
+                                st.write("")
+                                st.write("")
+                                if st.button("踢出频道", key=f"btn_kick_{tiny_id}"):
+                                    res = run_tool("scripts/manage/write/kick_guild_member.py", {"guild_id": g_id, "member_tinyid": tiny_id})
+                                    st.json(res)
 
-elif page == "🔔 自动化与任务":
-    st.title("🔔 数据分析与自动化任务")
-    tab1, tab2 = st.tabs(["🧠 AI 深度分析", "⏱️ 定时任务引擎"])
+elif page == "🧠 AI 数据与发帖":
+    st.title("🧠 AI 深度分析与自动化发帖")
     
-    with tab1:
-        with st.container(border=True):
-            st.subheader("输入需分析的数据或文本")
-            analysis_data = st.text_area("例如：粘贴复制的帖子 JSON 列表、成员讨论记录等", height=200)
-            analysis_prompt = st.text_input("分析指令", value="请总结出上述数据中的主要话题、用户活跃度及情感倾向，用条理清晰的方式输出。")
-            if st.button("🚀 启动深度分析", type="primary"):
-                with st.spinner("AI 正在深度思考..."):
-                    res = ai_helper.analyze_data(analysis_data, analysis_prompt)
-                    st.success("分析完成！")
-                    st.markdown("### 📊 分析报告")
-                    st.write(res)
-                
-    with tab2:
-        with st.container(border=True):
-            st.subheader("⚙️ 定时任务列表")
-            from scheduler_app import get_jobs, remove_job, start_scheduler
-            start_scheduler()
-            jobs = get_jobs()
-            if jobs:
-                for j in jobs:
-                    col1, col2 = st.columns([4, 1])
-                    col1.info(f"**任务ID**: {j.id}  \n**下次执行时间**: {j.next_run_time}")
-                    if col2.button("🗑️ 移除", key=f"del_{j.id}", use_container_width=True):
-                        remove_job(j.id)
-                        st.rerun()
+    if not g_id:
+        st.warning("👈 请先在左侧选择一个频道！")
+        st.stop()
+        
+    st.markdown("通过选取近期帖子进行内容聚合分析，并将总结结果一键发帖到频道。")
+    
+    with st.container(border=True):
+        st.subheader("1. 获取待分析数据")
+        tab1, tab2 = st.tabs(["🕒 按时间段拉取", "🗂️ 手动选择帖子"])
+        
+        analysis_source_text = ""
+        
+        with tab1:
+            col1, col2 = st.columns(2)
+            with col1:
+                days = st.number_input("拉取过去几天的帖子?", min_value=1, max_value=30, value=7)
+            with col2:
+                st.write("")
+                st.write("")
+                if st.button("拉取帖子内容", use_container_width=True):
+                    with st.spinner("正在获取并组装数据..."):
+                        res = run_tool("scripts/feed/read/get_guild_feeds.py", {"guild_id": g_id})
+                        if res.get("code") == 0:
+                            feeds = res.get("data", {}).get("feeds", res.get("data", {}).get("vecFeed", []))
+                            
+                            # Filter by time (approximated by simple count for now since get_guild_feeds might not support strict time bounds easily)
+                            # In a real scenario we'd check createTime
+                            assembled_text = ""
+                            for f in feeds[:20]: # limit to 20 for prompt size
+                                info = f.get("feed_info", f.get("feedInfo", {}))
+                                assembled_text += f"标题: {info.get('title', '')}\n内容: {info.get('content', '')}\n---\n"
+                                
+                            st.session_state.ai_source_data = assembled_text
+                            st.success(f"成功提取了 {len(feeds[:20])} 条近期帖子作为分析素材！")
+                        else:
+                            st.error("获取失败: " + str(res.get("msg")))
+                            
+        with tab2:
+            st.write("请先在 **📰 帖子与互动** 页面加载帖子列表，然后在这里勾选：")
+            current_feeds = st.session_state.get("current_feeds", [])
+            if not current_feeds:
+                st.info("暂无加载的帖子，请先去帖子管理页拉取。")
             else:
-                st.warning("暂无运行中的任务。")
+                selected_contents = []
+                for f in current_feeds:
+                    info = f.get("feed_info", f.get("feedInfo", {}))
+                    fid = info.get("feed_id", info.get("feedId", ""))
+                    title = info.get("title", "无标题")
+                    content = info.get("content", "无内容")
+                    if st.checkbox(f"**{title}** - {content[:50]}...", key=f"sel_{fid}"):
+                        selected_contents.append(f"标题: {title}\n内容: {content}")
+                        
+                if st.button("将选中的帖子作为分析素材"):
+                    st.session_state.ai_source_data = "\n---\n".join(selected_contents)
+                    st.success(f"已选中 {len(selected_contents)} 条帖子！")
+                    
+    # Display Source Data Text Area
+    source_data = st.text_area("数据源预览 (可手动修改)", value=st.session_state.get("ai_source_data", ""), height=150)
+    
+    if source_data:
+        with st.container(border=True):
+            st.subheader("2. AI 总结与分析")
+            analysis_prompt = st.text_input("分析指令", value="请总结出上述帖子中的主要话题、用户活跃度及情感倾向，用条理清晰的方式输出，适合作为社区周报发布。")
+            
+            if st.button("🚀 开始 AI 分析", type="primary"):
+                with st.spinner("AI 正在深度思考..."):
+                    res = ai_helper.analyze_data(source_data, analysis_prompt)
+                    st.session_state.ai_analysis_result = res
+                    
+        # Display Result and Post Button
+        if st.session_state.get("ai_analysis_result"):
+            with st.container(border=True):
+                st.subheader("3. 📊 分析报告与发帖")
+                result_text = st.text_area("分析结果 (可编辑)", value=st.session_state.ai_analysis_result, height=300)
+                
+                post_title = st.text_input("帖子标题", value=f"社区内容总结报告 - {datetime.now().strftime('%Y-%m-%d')}")
+                
+                if st.button("📢 一键发布此报告到当前频道", use_container_width=True, type="primary"):
+                    with st.spinner("正在发布..."):
+                        res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": g_id, "title": post_title, "content": result_text})
+                        if res.get("code") == 0:
+                            st.success("✅ 报告发布成功！")
+                        else:
+                            st.error(f"❌ 发布失败: {res.get('msg')}")
+
+elif page == "🔔 自动化任务":
+    st.title("🔔 自动化任务引擎")
+    
+    if not g_id:
+        st.warning("👈 请先在左侧选择一个频道！")
+        st.stop()
+        
+    with st.container(border=True):
+        st.subheader("➕ 添加新任务到当前频道")
+        task_type = st.selectbox("任务类型", ["内容巡检扫描 (自动清理违规词)", "问答自动回复 (AI 自动回复提问)"])
+        interval_minutes = st.number_input("执行间隔 (分钟)", min_value=1, value=60)
+        
+        if st.button("添加定时任务", type="primary"):
+            from scheduler_app import add_job
+            if task_type.startswith("内容巡检扫描"):
+                add_job("scripts/feed/operation/auto_clean_channel_feeds.py", {"guild_id": g_id}, interval_minutes)
+                st.success("已添加巡检任务！")
+            elif task_type.startswith("问答自动回复"):
+                add_job("scripts/feed/operation/channel_qa_responder.py", {"guild_id": g_id}, interval_minutes)
+                st.success("已添加问答回复任务！")
+            st.rerun()
+            
+    with st.container(border=True):
+        st.subheader("⚙️ 运行中的定时任务列表")
+        from scheduler_app import get_jobs, remove_job, start_scheduler
+        start_scheduler()
+        jobs = get_jobs()
+        if jobs:
+            for j in jobs:
+                col1, col2 = st.columns([4, 1])
+                col1.info(f"**任务ID**: {j.id}  \n**下次执行时间**: {j.next_run_time}")
+                if col2.button("🗑️ 移除", key=f"del_{j.id}", use_container_width=True):
+                    remove_job(j.id)
+                    st.rerun()
+        else:
+            st.warning("暂无运行中的任务。")
