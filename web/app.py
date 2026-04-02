@@ -33,7 +33,21 @@ def get_channel_list(guild_id):
     res = run_tool("scripts/manage/read/get_guild_channel_list.py", {"guild_id": guild_id})
     channels_options = []
     if res.get("code") == 0 or res.get("success") is True:
-        channels = res.get("data", {}).get("channels", res.get("data", {}).get("vecChannel", []))
+        data = res.get("data", {})
+        
+        # New structure: data.guildInfoList[0].channelList
+        guild_info_list = data.get("guildInfoList", [])
+        if guild_info_list and isinstance(guild_info_list, list):
+            channels = guild_info_list[0].get("channelList", [])
+            for c in channels:
+                c_name = c.get("channelName", c.get("channel_name", "未命名版块"))
+                c_id = c.get("channelId", c.get("channel_id", ""))
+                if c_id:
+                    channels_options.append({"id": str(c_id), "name": f"{c_name} (ID:{c_id})"})
+            return channels_options
+            
+        # Old/fallback structure: data.channels or data.vecChannel
+        channels = data.get("channels", data.get("vecChannel", []))
         for c in channels:
             c_info = c.get("channelInfo", c.get("channel_info", c))
             c_name = c_info.get("channelName", c_info.get("channel_name", "未命名版块"))
