@@ -35,14 +35,22 @@ def load_my_guilds():
     try:
         res = run_tool("scripts/manage/read/get_my_join_guild_info.py", {})
         if isinstance(res, dict) and res.get("code") == 0:
-            guilds = res.get("data", {}).get("guilds", res.get("data", {}).get("guildInfos", []))
+            data = res.get("data", {})
             options = []
-            for g in guilds:
-                info = g.get("guildInfo", g.get("guild_info", g))
-                gid = info.get("guildId", info.get("guild_id", ""))
-                gname = info.get("guildName", info.get("guild_name", "未知频道"))
-                if gid:
-                    options.append({"id": str(gid), "name": f"{gname} ({gid})"})
+            
+            # Helper to parse guild info from the new structure
+            def add_guilds(guild_list, tag):
+                for g in guild_list:
+                    info = g.get("msgGuildInfo", {})
+                    gid = g.get("uint64GuildId", "")
+                    gname = info.get("bytesGuildName", "未知频道")
+                    if gid:
+                        options.append({"id": str(gid), "name": f"[{tag}] {gname}"})
+            
+            add_guilds(data.get("created_guilds", []), "创建")
+            add_guilds(data.get("managed_guilds", []), "管理")
+            add_guilds(data.get("joined_guilds", []), "加入")
+            
             st.session_state.my_guilds = options
             return options
     except Exception as e:
