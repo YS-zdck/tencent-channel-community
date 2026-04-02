@@ -530,56 +530,56 @@ elif page == "👥 频道与成员":
     with st.container(border=True):
         col_m1, col_m2 = st.columns([3, 1])
         with col_m1:
-                    keyword = st.text_input("搜索成员昵称", placeholder="留空则获取全部")
-                with col_m2:
-                    st.write("")
-                    st.write("")
-                    if st.button("获取/搜索成员", use_container_width=True, type="primary"):
-                        if keyword:
-                            res = run_tool("scripts/manage/read/guild_member_search.py", {"guild_id": g_id, "keyword": keyword})
-                        else:
-                            res = run_tool("scripts/manage/read/get_guild_member_list.py", {"guild_id": g_id})
-                        
-                        if res.get("code") == 0 or res.get("success") is True:
-                            st.session_state.current_members = res.get("data", {})
-                        else:
-                            st.error("获取失败: " + str(res.get("msg", res)))
+            keyword = st.text_input("搜索成员昵称", placeholder="留空则获取全部")
+        with col_m2:
+            st.write("")
+            st.write("")
+            if st.button("获取/搜索成员", use_container_width=True, type="primary"):
+                if keyword:
+                    res = run_tool("scripts/manage/read/guild_member_search.py", {"guild_id": g_id, "keyword": keyword})
+                else:
+                    res = run_tool("scripts/manage/read/get_guild_member_list.py", {"guild_id": g_id})
                 
-                members_data = st.session_state.get("current_members", {})
-                if members_data:
-                    # support new structure: owners, admins, members, robots
-                    all_members = []
-                    for group in ["owners", "admins", "members", "robots"]:
-                        all_members.extend(members_data.get(group, []))
+                if res.get("code") == 0 or res.get("success") is True:
+                    st.session_state.current_members = res.get("data", {})
+                else:
+                    st.error("获取失败: " + str(res.get("msg", res)))
+        
+        members_data = st.session_state.get("current_members", {})
+        if members_data:
+            # support new structure: owners, admins, members, robots
+            all_members = []
+            for group in ["owners", "admins", "members", "robots"]:
+                all_members.extend(members_data.get(group, []))
+            
+            # fallback for old structure
+            if not all_members:
+                all_members = members_data.get("members", members_data.get("vecMember", []))
+                
+            if not all_members:
+                st.info("未找到成员。")
+            else:
+                st.write(f"找到 {len(all_members)} 名成员：")
+                for m in all_members:
+                    # try parse new structure first, then fallback to old
+                    nick = m.get("昵称", m.get("member_info", {}).get("nick_name", "未知"))
+                    tiny_id = m.get("tinyid", m.get("member_info", {}).get("member_tinyid", ""))
+                    join_time = m.get("加入时间", m.get("member_info", {}).get("join_time_human", "未知"))
                     
-                    # fallback for old structure
-                    if not all_members:
-                        all_members = members_data.get("members", members_data.get("vecMember", []))
-                        
-                    if not all_members:
-                        st.info("未找到成员。")
-                    else:
-                        st.write(f"找到 {len(all_members)} 名成员：")
-                        for m in all_members:
-                            # try parse new structure first, then fallback to old
-                            nick = m.get("昵称", m.get("member_info", {}).get("nick_name", "未知"))
-                            tiny_id = m.get("tinyid", m.get("member_info", {}).get("member_tinyid", ""))
-                            join_time = m.get("加入时间", m.get("member_info", {}).get("join_time_human", "未知"))
-                            
-                        with st.expander(f"👤 {nick} (TinyID: {tiny_id})"):
-                            st.write(f"加入时间: {join_time}")
-                            col_a1, col_a2 = st.columns(2)
-                            with col_a1:
-                                shutup_time = st.number_input("禁言时间(秒，0为解除)", min_value=0, value=60, key=f"shutup_{tiny_id}")
-                                if st.button("禁言/解禁", key=f"btn_shutup_{tiny_id}"):
-                                    res = run_tool("scripts/manage/write/modify_member_shut_up.py", {"guild_id": g_id, "member_tinyid": tiny_id, "shutup_time": shutup_time})
-                                    st.json(res)
-                            with col_a2:
-                                st.write("")
-                                st.write("")
-                                if st.button("踢出频道", key=f"btn_kick_{tiny_id}"):
-                                    res = run_tool("scripts/manage/write/kick_guild_member.py", {"guild_id": g_id, "member_tinyid": tiny_id})
-                                    st.json(res)
+                    with st.expander(f"👤 {nick} (TinyID: {tiny_id})"):
+                        st.write(f"加入时间: {join_time}")
+                        col_a1, col_a2 = st.columns(2)
+                        with col_a1:
+                            shutup_time = st.number_input("禁言时间(秒，0为解除)", min_value=0, value=60, key=f"shutup_{tiny_id}")
+                            if st.button("禁言/解禁", key=f"btn_shutup_{tiny_id}"):
+                                res = run_tool("scripts/manage/write/modify_member_shut_up.py", {"guild_id": g_id, "member_tinyid": tiny_id, "shutup_time": shutup_time})
+                                st.json(res)
+                        with col_a2:
+                            st.write("")
+                            st.write("")
+                            if st.button("踢出频道", key=f"btn_kick_{tiny_id}"):
+                                res = run_tool("scripts/manage/write/kick_guild_member.py", {"guild_id": g_id, "member_tinyid": tiny_id})
+                                st.json(res)
 
 elif page == "🧠 AI 数据与发帖":
     st.title("🧠 AI 深度分析与自动化发帖")
