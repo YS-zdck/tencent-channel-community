@@ -28,25 +28,19 @@ h1, h2, h3, h4 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Rob
 """, unsafe_allow_html=True)
 
 # ---- Helper Functions ----
-def get_target_channel_id(guild_id):
-    """Attempt to find a suitable channel_id for publishing (e.g. 帖子广场 or anything available)"""
+def get_channel_list(guild_id):
+    """获取指定频道下的所有子版块列表，返回格式 [{"id": "xxx", "name": "xxx"}]"""
     res = run_tool("scripts/manage/read/get_guild_channel_list.py", {"guild_id": guild_id})
+    channels_options = []
     if res.get("code") == 0 or res.get("success") is True:
         channels = res.get("data", {}).get("channels", res.get("data", {}).get("vecChannel", []))
-        if not channels: return ""
-        
-        # Try to find a channel named "帖子" or "讨论"
         for c in channels:
             c_info = c.get("channelInfo", c.get("channel_info", c))
-            c_name = c_info.get("channelName", c_info.get("channel_name", ""))
+            c_name = c_info.get("channelName", c_info.get("channel_name", "未命名版块"))
             c_id = c_info.get("channelId", c_info.get("channel_id", ""))
-            if "帖子" in c_name or "讨论" in c_name or "广场" in c_name:
-                return c_id
-                
-        # Fallback to the first available channel
-        first_info = channels[0].get("channelInfo", channels[0].get("channel_info", channels[0]))
-        return first_info.get("channelId", first_info.get("channel_id", ""))
-    return ""
+            if c_id:
+                channels_options.append({"id": str(c_id), "name": f"{c_name} (ID:{c_id})"})
+    return channels_options
 
 def load_my_guilds():
     if "my_guilds" not in st.session_state:
@@ -136,18 +130,36 @@ def config_dialog():
 @st.dialog("📝 发布新帖子", width="large")
 def publish_post_dialog(guild_id):
     st.write(f"当前操作频道 ID: `{guild_id}`")
+    
+    # 动态获取发帖版块列表
+    channels = get_channel_list(guild_id)
+    if not channels:
+        st.error("未能获取到该频道的子版块列表，可能无权限或频道为空。")
+        return
+        
+    # 用户显式选择版块
+    selected_channel_name = st.selectbox(
+        "📍 选择发帖目标版块", 
+        options=[c["name"] for c in channels]
+    )
+    
+    # 解析出选中的 channel_id
+    selected_channel_id = ""
+    for c in channels:
+        if c["name"] == selected_channel_name:
+            selected_channel_id = c["id"]
+            break
+            
+    st.divider()
+
     tab1, tab2, tab3 = st.tabs(["✍️ 直接发布", "🤖 AI 创作", "📑 AI 总结发帖"])
     
     with tab1:
         title = st.text_input("帖子标题", key="pub_title")
         content = st.text_area("帖子正文", key="pub_content", height=200)
         if st.button("🚀 立即发布", use_container_width=True, type="primary"):
-            with st.spinner("获取发帖板块..."):
-                channel_id = get_target_channel_id(guild_id)
-            if not channel_id:
-                st.error("未能找到支持发帖的板块，请检查频道配置。")
-            else:
-                res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": channel_id, "title": title, "content": content})
+            with st.spinner("正在发布..."):
+                res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": selected_channel_id, "title": title, "content": content})
                 if res.get("code") == 0 or res.get("success") is True: 
                     st.success("发布成功！")
                 else: 
@@ -157,34 +169,26 @@ def publish_post_dialog(guild_id):
         topic = st.text_input("发帖主题")
         reqs = st.text_area("附加要求 (例如：语气幽默，不少于300字)", height=80)
         if st.button("✨ AI 生成并发布", use_container_width=True, type="primary"):
-            with st.spinner("获取发帖板块并创作内容..."):
-                channel_id = get_target_channel_id(guild_id)
-                if not channel_id:
-                    st.error("未能找到支持发帖的板块，请检查频道配置。")
-                else:
-                    generated = ai_helper.generate_post(topic, reqs)
-                    st.text_area("生成的正文 (预览)", value=generated, height=200, disabled=True)
-                    res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": channel_id, "title": topic, "content": generated})
-                    if res.get("code") == 0 or res.get("success") is True: 
-                        st.success("发布成功！")
-                    else: 
-                        st.error(f"发布失败: {res.get('msg', res)}")
+            with st.spinner("AI 正在头脑风暴并发布..."):
+                generated = ai_helper.generate_post(topic, reqs)
+                st.text_area("生成的正文 (预览)", value=generated, height=200, disabled=True)
+                res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": selected_channel_id, "title": topic, "content": generated})
+                if res.get("code") == 0 or res.get("success") is True: 
+                    st.success("发布成功！")
+                else: 
+                    st.error(f"发布失败: {res.get('msg', res)}")
                     
     with tab3:
         source_data = st.text_area("输入需要总结的数据源 (例如长文章、群聊记录、新闻等)", height=150)
         if st.button("📝 总结并发布", use_container_width=True, type="primary"):
-            with st.spinner("获取发帖板块并提炼核心内容..."):
-                channel_id = get_target_channel_id(guild_id)
-                if not channel_id:
-                    st.error("未能找到支持发帖的板块，请检查频道配置。")
-                else:
-                    generated = ai_helper.analyze_data(source_data, "请总结以上内容，提取核心信息，并写成一篇适合在社区分享的帖子，条理清晰。")
-                    st.text_area("生成的总结 (预览)", value=generated, height=200, disabled=True)
-                    res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": channel_id, "title": "今日资讯总结", "content": generated})
-                    if res.get("code") == 0 or res.get("success") is True: 
-                        st.success("发布成功！")
-                    else: 
-                        st.error(f"发布失败: {res.get('msg', res)}")
+            with st.spinner("AI 正在提炼核心内容并发布..."):
+                generated = ai_helper.analyze_data(source_data, "请总结以上内容，提取核心信息，并写成一篇适合在社区分享的帖子，条理清晰。")
+                st.text_area("生成的总结 (预览)", value=generated, height=200, disabled=True)
+                res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": guild_id, "channel_id": selected_channel_id, "title": "今日资讯总结", "content": generated})
+                if res.get("code") == 0 or res.get("success") is True: 
+                    st.success("发布成功！")
+                else: 
+                    st.error(f"发布失败: {res.get('msg', res)}")
 
 @st.dialog("💬 发表评论", width="large")
 def comment_dialog(guild_id, feed_id, post_content):
@@ -638,16 +642,27 @@ elif page == "🧠 AI 数据与发帖":
                 post_title = st.text_input("帖子标题", value=f"社区内容总结报告 - {datetime.now().strftime('%Y-%m-%d')}")
                 
                 if st.button("📢 一键发布此报告到当前频道", use_container_width=True, type="primary"):
-                    with st.spinner("获取板块并发布..."):
-                        channel_id = get_target_channel_id(g_id)
+                with st.spinner("获取板块并发布..."):
+                    # Here we can also dynamically ask or just pick the first available for simplicity in auto-post
+                    channels = get_channel_list(g_id)
+                    channel_id = ""
+                    if channels:
+                        # Try to find a channel named "帖子" or "讨论"
+                        for c in channels:
+                            if "帖子" in c["name"] or "讨论" in c["name"] or "广场" in c["name"]:
+                                channel_id = c["id"]
+                                break
                         if not channel_id:
-                            st.error("未能找到支持发帖的板块，请检查频道配置。")
+                            channel_id = channels[0]["id"]
+                            
+                    if not channel_id:
+                        st.error("未能找到支持发帖的板块，请检查频道配置。")
+                    else:
+                        res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": g_id, "channel_id": channel_id, "title": post_title, "content": result_text})
+                        if res.get("code") == 0 or res.get("success") is True:
+                            st.success("✅ 报告发布成功！")
                         else:
-                            res = run_tool("scripts/feed/write/publish_feed.py", {"guild_id": g_id, "channel_id": channel_id, "title": post_title, "content": result_text})
-                            if res.get("code") == 0 or res.get("success") is True:
-                                st.success("✅ 报告发布成功！")
-                            else:
-                                st.error(f"❌ 发布失败: {res.get('msg', res)}")
+                            st.error(f"❌ 发布失败: {res.get('msg', res)}")
 
 elif page == "🔔 自动化任务":
     st.title("🔔 自动化任务引擎")
