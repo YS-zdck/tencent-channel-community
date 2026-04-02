@@ -28,6 +28,18 @@ h1, h2, h3, h4 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Rob
 """, unsafe_allow_html=True)
 
 # ---- Helper Functions ----
+def parse_to_timestamp(time_str_or_int):
+    """尝试将可能的时间字符串（2026-04-02 14:15:48）或数字转换为纯数字时间戳字符串"""
+    if not time_str_or_int:
+        return "0"
+    if isinstance(time_str_or_int, int) or (isinstance(time_str_or_int, str) and time_str_or_int.isdigit()):
+        return str(time_str_or_int)
+    try:
+        dt = datetime.strptime(str(time_str_or_int), "%Y-%m-%d %H:%M:%S")
+        return str(int(dt.timestamp()))
+    except:
+        return "0"
+
 def get_channel_list(guild_id):
     """获取指定频道下的所有子版块列表，返回格式 [{"id": "xxx", "name": "xxx"}]"""
     res = run_tool("scripts/manage/read/get_guild_channel_list.py", {"guild_id": guild_id})
@@ -219,10 +231,11 @@ def comment_dialog(guild_id, feed_id, create_time, post_content):
     with tab1:
         cmt_content = st.text_area("输入你的评论...", key=f"cmt_input_{feed_id}", height=150)
         if st.button("发送评论", use_container_width=True, type="primary"):
+            ts = parse_to_timestamp(create_time)
             res = run_tool("scripts/feed/write/do_comment.py", {
                 "guild_id": guild_id, 
                 "feed_id": feed_id, 
-                "feed_create_time": str(create_time), 
+                "feed_create_time": ts, 
                 "comment_type": 1,
                 "content": cmt_content
             })
@@ -245,10 +258,11 @@ def comment_dialog(guild_id, feed_id, create_time, post_content):
                     with st.spinner("生成中..."):
                         generated = ai_helper.generate_comment(post_content, style)
                         st.success(f"**已发送:**\n{generated}")
+                        ts = parse_to_timestamp(create_time)
                         res = run_tool("scripts/feed/write/do_comment.py", {
                             "guild_id": guild_id, 
                             "feed_id": feed_id, 
-                            "feed_create_time": str(create_time), 
+                            "feed_create_time": ts, 
                             "comment_type": 1,
                             "content": generated
                         })
@@ -266,10 +280,11 @@ def reply_dialog(guild_id, feed_id, create_time, comment_id, comment_content):
     with tab1:
         reply_text = st.text_area("输入回复内容...", key=f"rep_input_{comment_id}", height=120)
         if st.button("发送回复", use_container_width=True, type="primary"):
+            ts = parse_to_timestamp(create_time)
             res = run_tool("scripts/feed/write/do_reply.py", {
                 "guild_id": guild_id, 
                 "feed_id": feed_id, 
-                "feed_create_time": str(create_time), 
+                "feed_create_time": ts, 
                 "comment_id": comment_id, 
                 "reply_type": 1,
                 "content": reply_text
@@ -288,10 +303,11 @@ def reply_dialog(guild_id, feed_id, create_time, comment_id, comment_content):
                 with st.spinner("AI 生成中..."):
                     generated = ai_helper.generate_comment(comment_content, style)
                     st.success(f"**已发送:**\n{generated}")
+                    ts = parse_to_timestamp(create_time)
                     res = run_tool("scripts/feed/write/do_reply.py", {
                         "guild_id": guild_id, 
                         "feed_id": feed_id, 
-                        "feed_create_time": str(create_time), 
+                        "feed_create_time": ts, 
                         "comment_id": comment_id, 
                         "reply_type": 1,
                         "content": generated
