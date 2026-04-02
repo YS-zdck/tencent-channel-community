@@ -10,6 +10,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.parent.resolve()
 ENV_FILE = BASE_DIR / ".env"
+CACHE_FILE = BASE_DIR / "guilds_cache.json"
 
 load_dotenv(dotenv_path=ENV_FILE)
 os.environ["QQ_AI_CONNECT_DOTENV"] = str(ENV_FILE)
@@ -68,13 +69,24 @@ def get_channel_list(guild_id):
                 channels_options.append({"id": str(c_id), "name": f"{c_name} (ID:{c_id})"})
     return channels_options
 
-def load_my_guilds():
-    if "my_guilds" not in st.session_state:
-        st.session_state.my_guilds = []
+def load_my_guilds(force_refresh=False):
+    if not force_refresh and "my_guilds" in st.session_state and st.session_state.my_guilds:
+        return st.session_state.my_guilds
         
+    # Try load from cache file first
+    if not force_refresh and CACHE_FILE.exists():
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                cache_data = json.load(f)
+                if cache_data.get("token") == os.environ.get("QQ_AI_CONNECT_TOKEN"):
+                    st.session_state.my_guilds = cache_data.get("guilds", [])
+                    return st.session_state.my_guilds
+        except Exception:
+            pass
+
     try:
         res = run_tool("scripts/manage/read/get_my_join_guild_info.py", {})
-        if isinstance(res, dict) and res.get("code") == 0:
+        if isinstance(res, dict) and (res.get("code") == 0 or res.get("success") is True):
             data = res.get("data", {})
             options = []
             
@@ -92,12 +104,23 @@ def load_my_guilds():
             add_guilds(data.get("joined_guilds", []), "加入")
             
             st.session_state.my_guilds = options
+            
+            # Save to cache file
+            try:
+                with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "token": os.environ.get("QQ_AI_CONNECT_TOKEN"),
+                        "guilds": options
+                    }, f, ensure_ascii=False)
+            except Exception as e:
+                print(f"Failed to write cache: {e}")
+                
             return options
     except Exception as e:
         print(f"Failed to load guilds: {e}")
         pass
         
-    return st.session_state.my_guilds
+    return st.session_state.get("my_guilds", [])
 
 # ---- Dialogs ----
 @st.dialog("⚙️ 环境与系统配置", width="large")
@@ -360,11 +383,13 @@ with st.sidebar:
     st.subheader("📌 目标频道选择")
     
     # Check if we should load guilds
-    if st.button("🔄 刷新获取频道列表", use_container_width=True):
+    if st.button("🔄 强制从云端刷新频道列表", use_container_width=True):
         st.session_state.my_guilds = []
-        load_my_guilds()
+        load_my_guilds(force_refresh=True)
         st.rerun()
 
+    # Automatically try loading from cache
+    load_my_guilds()
     guilds_options = st.session_state.get("my_guilds", [])
     
     if not guilds_options:
