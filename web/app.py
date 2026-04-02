@@ -787,17 +787,37 @@ elif page == "🔔 自动化任务":
         
     with st.container(border=True):
         st.subheader("➕ 添加新任务到当前频道")
-        task_type = st.selectbox("任务类型", ["内容巡检扫描 (自动清理违规词)", "问答自动回复 (AI 自动回复提问)"])
+        task_type = st.selectbox("任务类型", [
+            "内容巡检扫描 (拉取内容供外部AI审查违规词)", 
+            "问答自动回复 (自动提取关键词检索频道并回复)",
+            "自动点赞 (给频道内最新拉取到的帖子点赞)"
+        ])
         interval_minutes = st.number_input("执行间隔 (分钟)", min_value=1, value=60)
+        
+        # 额外参数
+        extra_params = {}
+        if "问答自动回复" in task_type:
+            st.info("ℹ️ 问答自动回复逻辑：每隔设定时间拉取最新帖子，如果帖子中包含如“怎么”、“如何”、“求助”、“不知道”等疑问词汇，则会提取关键词并在频道内搜索相关旧帖，如果搜到，会把旧帖子的摘要整理成答案自动在帖子下回复。")
+            bot_user_id = st.text_input("您的用户 ID (TinyID)，用于发起回复身份", value="请在【频道与成员】页面获取你的TinyID")
+            extra_params["bot_user_id"] = bot_user_id
+        elif "内容巡检扫描" in task_type:
+            st.info("ℹ️ 内容巡检逻辑：每隔设定时间拉取最新帖子返回。如果你想要配置特定违禁词，这个脚本本身是设计为**给外部 AI 智能体调用**的（AI 拿到返回列表后自己判断并调用删除接口）。如果你希望内置删帖，请自行二次开发。")
+            scan_interval = st.number_input("扫描过去多少分钟的帖子？", value=60)
+            extra_params["scan_interval"] = scan_interval
+        elif "自动点赞" in task_type:
+            st.info("ℹ️ 自动点赞逻辑：每隔设定时间拉取频道最新帖子（单次约 20 条），并为它们逐一点赞，适合保持社区活跃度。")
         
         if st.button("添加定时任务", type="primary"):
             from scheduler_app import add_job
-            if task_type.startswith("内容巡检扫描"):
-                add_job("scripts/feed/operation/auto_clean_channel_feeds.py", {"guild_id": g_id}, interval_minutes)
+            if "内容巡检扫描" in task_type:
+                add_job("scripts/feed/operation/auto_clean_channel_feeds.py", {"guild_id": g_id, **extra_params}, interval_minutes)
                 st.success("已添加巡检任务！")
-            elif task_type.startswith("问答自动回复"):
-                add_job("scripts/feed/operation/channel_qa_responder.py", {"guild_id": g_id}, interval_minutes)
+            elif "问答自动回复" in task_type:
+                add_job("scripts/feed/operation/channel_qa_responder.py", {"guild_id": g_id, **extra_params}, interval_minutes)
                 st.success("已添加问答回复任务！")
+            elif "自动点赞" in task_type:
+                add_job("scripts/feed/operation/auto_like_feeds.py", {"guild_id": g_id}, interval_minutes)
+                st.success("已添加自动点赞任务！")
             st.rerun()
             
     with st.container(border=True):
