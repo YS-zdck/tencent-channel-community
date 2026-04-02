@@ -32,19 +32,24 @@ def load_my_guilds():
     if "my_guilds" not in st.session_state:
         st.session_state.my_guilds = []
         
-    res = run_tool("scripts/manage/read/get_my_join_guild_info.py", {})
-    if res.get("code") == 0:
-        guilds = res.get("data", {}).get("guilds", res.get("data", {}).get("guildInfos", []))
-        options = []
-        for g in guilds:
-            info = g.get("guildInfo", g.get("guild_info", g))
-            gid = info.get("guildId", info.get("guild_id", ""))
-            gname = info.get("guildName", info.get("guild_name", "未知频道"))
-            if gid:
-                options.append({"id": str(gid), "name": f"{gname} ({gid})"})
-        st.session_state.my_guilds = options
-        return options
-    return []
+    try:
+        res = run_tool("scripts/manage/read/get_my_join_guild_info.py", {})
+        if isinstance(res, dict) and res.get("code") == 0:
+            guilds = res.get("data", {}).get("guilds", res.get("data", {}).get("guildInfos", []))
+            options = []
+            for g in guilds:
+                info = g.get("guildInfo", g.get("guild_info", g))
+                gid = info.get("guildId", info.get("guild_id", ""))
+                gname = info.get("guildName", info.get("guild_name", "未知频道"))
+                if gid:
+                    options.append({"id": str(gid), "name": f"{gname} ({gid})"})
+            st.session_state.my_guilds = options
+            return options
+    except Exception as e:
+        print(f"Failed to load guilds: {e}")
+        pass
+        
+    return st.session_state.my_guilds
 
 # ---- Dialogs ----
 @st.dialog("⚙️ 环境与系统配置", width="large")
@@ -232,16 +237,20 @@ with st.sidebar:
     
     # Global Guild Selector
     st.subheader("📌 目标频道选择")
-    guilds_options = load_my_guilds()
+    
+    # Check if we should load guilds
+    if st.button("🔄 刷新获取频道列表", use_container_width=True):
+        st.session_state.my_guilds = []
+        load_my_guilds()
+        st.rerun()
+
+    guilds_options = st.session_state.get("my_guilds", [])
     
     if not guilds_options:
-        st.warning("暂未获取到频道列表，请检查 Token 并点击刷新。")
+        st.warning("暂未获取到频道列表，可以点击上方刷新，或直接输入 ID。")
         selected_guild = st.text_input("手动输入频道 ID", value=st.session_state.get("global_guild_id", ""))
         if selected_guild:
             st.session_state.global_guild_id = selected_guild
-        if st.button("🔄 刷新频道列表", use_container_width=True):
-            st.session_state.my_guilds = []
-            st.rerun()
     else:
         # Get index of currently selected guild
         current_gid = st.session_state.get("global_guild_id", "")
@@ -263,10 +272,6 @@ with st.sidebar:
             if g["name"] == selected_name:
                 st.session_state.global_guild_id = g["id"]
                 break
-                
-        if st.button("🔄 刷新频道列表", use_container_width=True):
-            st.session_state.my_guilds = []
-            st.rerun()
 
     st.divider()
     
