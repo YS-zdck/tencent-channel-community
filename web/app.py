@@ -419,18 +419,62 @@ elif page == "🌟 创建新频道":
     st.markdown("无需依赖左侧选中的目标频道，您可以直接在此处创建一个全新的频道。")
     
     with st.container(border=True):
-        create_name = st.text_input("新频道名称")
-        create_profile = st.text_area("新频道简介")
-        is_public = st.checkbox("公开频道", value=True)
+        create_name = st.text_input("新频道名称 (必填)")
+        create_profile = st.text_area("新频道简介 (必填)")
+        theme = st.text_input("频道主题 (theme) (若提供，名称和简介可由 AI 自动润色补充)")
+        is_public = st.selectbox("频道公开度", ["public", "private"], index=0)
+        
+        st.markdown("**🖼️ 频道头像 (必传)**")
+        uploaded_file = st.file_uploader("选择一张图片作为频道头像 (JPG/PNG)", type=["jpg", "jpeg", "png"])
+        
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            if st.button("预览创建效果"):
-                res = run_tool("scripts/manage/read/preview_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
-                st.json(res)
+            if st.button("预览创建参数", use_container_width=True):
+                if not uploaded_file:
+                    st.warning("请先上传频道头像图片。")
+                else:
+                    # Save to temp
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                        tmp.write(uploaded_file.getvalue())
+                        tmp_path = tmp.name
+                    
+                    res = run_tool("scripts/manage/read/preview_theme_private_guild.py", {
+                        "guild_name": create_name, 
+                        "guild_profile": create_profile, 
+                        "theme": theme,
+                        "community_type": is_public,
+                        "image_path": tmp_path
+                    })
+                    st.json(res)
+                    os.remove(tmp_path)
+                    
         with col_c2:
-            if st.button("实际创建该频道", type="primary"):
-                res = run_tool("scripts/manage/write/create_theme_private_guild.py", {"guild_name": create_name, "profile": create_profile, "is_public": is_public})
-                st.json(res)
+            if st.button("🚀 立即创建该频道", type="primary", use_container_width=True):
+                if not uploaded_file:
+                    st.warning("请先上传频道头像图片。")
+                else:
+                    # Save to temp
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                        tmp.write(uploaded_file.getvalue())
+                        tmp_path = tmp.name
+                    
+                    with st.spinner("正在向 QQ 频道提交创建请求..."):
+                        res = run_tool("scripts/manage/write/create_theme_private_guild.py", {
+                            "guild_name": create_name, 
+                            "guild_profile": create_profile, 
+                            "theme": theme,
+                            "community_type": is_public,
+                            "image_path": tmp_path
+                        })
+                        if res.get("code") == 0 or res.get("success") is True:
+                            st.success("频道创建成功！")
+                        else:
+                            st.error(f"创建失败: {res.get('msg', res)}")
+                        st.json(res)
+                    
+                    os.remove(tmp_path)
                 
 elif page == "📰 帖子与互动":
     st.title("📰 帖子管理与社区互动")
