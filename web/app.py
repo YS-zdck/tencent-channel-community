@@ -65,11 +65,22 @@ def config_dialog():
     col_save, col_verify = st.columns(2)
     with col_save:
         if st.button("💾 保存配置", use_container_width=True, type="primary"):
-            with open(ENV_FILE, "w") as f:
-                f.write(f'QQ_AI_CONNECT_TOKEN="{token}"\n')
-                f.write(f'OPENAI_API_KEY="{openai_key}"\n')
-                f.write(f'OPENAI_BASE_URL="{openai_url}"\n')
-                f.write(f'OPENAI_MODEL="{openai_model}"\n')
+            import sys
+            sys.path.append(str(BASE_DIR / "scripts" / "manage"))
+            try:
+                from common import write_dotenv_qq_token
+                write_dotenv_qq_token(ENV_FILE, token)
+            except Exception as e:
+                st.error(f"写入 QQ Token 失败: {e}")
+                
+            # append other envs
+            content = ENV_FILE.read_text() if ENV_FILE.exists() else ""
+            lines = [l for l in content.splitlines() if not l.startswith("OPENAI_")]
+            lines.append(f'OPENAI_API_KEY="{openai_key}"')
+            lines.append(f'OPENAI_BASE_URL="{openai_url}"')
+            lines.append(f'OPENAI_MODEL="{openai_model}"')
+            ENV_FILE.write_text("\n".join(lines) + "\n")
+            
             os.environ["QQ_AI_CONNECT_TOKEN"] = token
             os.environ["OPENAI_API_KEY"] = openai_key
             os.environ["OPENAI_BASE_URL"] = openai_url
