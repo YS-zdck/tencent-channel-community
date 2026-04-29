@@ -13,13 +13,13 @@
 | 帖子详情 | `get-feed-detail` | 自动补取分享短链 |
 | 帖子评论 | `get-feed-comments` | 回复预览在 `replies_preview` 字段 |
 | 评论回复翻页 | `get-next-page-replies` | 首次 attach_info 从 get-feed-comments 评论对象获取 |
-| 搜索帖子 | `search-guild-feeds` | 结果补充频道名称与分享短链 |
+| 搜索帖子 | `search-guild-feeds` | 结果补充频道名称与分享短链；**需已加入该频道**，否则报 retCode=130000 |
 | 互动消息 | `get-notices` | 类型: 1=顶帖 2=赞评论 3=赞回复 4=收到评论 5=收到回复 6=被@ |
 | 评论帖子 / "回复帖子" | `do-comment` | **禁止**用 do-reply 替代；删除时需 --yes；支持 `--ref` 从通知自动填充 |
 | 回复已有评论或回复 | `do-reply` | 需 comment_id，仅用于回复已有评论/回复；删除时需 --yes；支持 `--ref` 从通知自动填充 |
 | 发帖 | `publish-feed` | 见「发帖规则」 |
 | 删帖 | `del-feed` | 高风险，需 --yes |
-| 编辑帖子 / 改帖 | `alter-feed` | 自动补取分享短链 |
+| 编辑帖子 / 改帖 | `alter-feed` | 自动补取分享短链；**Markdown 帖子可编辑**（用 `--markdown-content`，见「陷阱」） |
 | 帖子点赞 / 取消点赞 | `do-feed-prefer` | action: 1=点赞 3=取消 |
 | 评论/回复点赞 | `do-like` | like-type: 3=赞评论 4=取消 5=赞回复 6=取消；需 comment_id |
 | 精华/置顶 | `set-feed-essence` / `top-feed` | 需管理权限 |
@@ -30,10 +30,14 @@
 
 ### get-guild-feeds
 
+- **前置条件**：满足以下任一条件才可调用；否则告知用户并引导加入：
+  - 该频道为**公开频道**（无需加入即可浏览）
+  - 当前账号已是该频道的**成员**（可通过 `get-my-join-guild-info` 确认）
+  - 不确定是否公开时，**直接执行**，报错再引导——返回 `retCode=20047` 时，告知用户该频道需先加入才能浏览，引导通过 `manage search-and-join` 加入后重试
 - `get_type` **必须显式传入**，不传或传 0 返回空数据。1=热门 2=最新，不确定时默认 2
 - 用户说"全部"/"所有帖子"/"按时间" → `get_type=2`
 - **翻页时必须保持相同 get_type**，游标与排序模式绑定
-- 返回 retCode `20047` → 如实告知"暂无帖子数据"，不切换其他工具重试
+- 返回空列表（data 为空数组）→ 如实告知"暂无帖子数据"，不切换其他工具重试
 
 ### 发帖规则
 
@@ -43,7 +47,11 @@
 4. **话题标签（#话题）**：仅**短贴**（feed_type=1）支持话题标签。**长贴（feed_type=2）不支持话题标签**。CLI 对长贴传入话题参数（`topic_names` / `--topic-name` / 正文中的 `#[话题]()` 语法）会直接报错拦截
 5. **数量限制**：短贴 ≤1000字/≤18图/≤1视频；长贴 ≤10000字/≤50图/≤5视频；评论回复 ≤1图。超限 CLI 直接报错
 6. **超限拆分**：严禁自行拆分发布，必须先告知用户 → 提出拆分方案 → 获得确认后执行
-7. 正文为纯文本，不渲染 Markdown
+7. **内容格式（⚠️ 重要）**：
+   - `--content` 是**纯文本模式**，后端不渲染任何 Markdown 语法——`##`、`**粗体**`、`- 列表`、`> 引用`、代码块等均原样显示为符号
+   - 内容含任何 Markdown 语法时，**必须改用 `--markdown-content`**（后端设置 `is_markdown=true`，客户端才会按 Markdown 渲染）
+   - CLI 会在运行时检测 `--content` 里的 Markdown 语法并直接报错，引导改用 `--markdown-content`
+   - `--content` 与 `--markdown-content` 互斥，不可同时传
 8. 成功后自动补取分享短链，展示短链即可，**不返回 feed_id**
 
 ### 分享链接
@@ -65,7 +73,7 @@
 | `get-feed-comments` | `attach_info` | `--attach-info` | |
 | `get-notices` | `attach_info` | `--attach-info` | |
 | `get-next-page-replies` | `attach_info` | `--attach-info` | 首次值从 get-feed-comments 评论对象获取 |
-| `search-guild-feeds` | `cookie` | `--next-page-cookie` | stdin JSON 字段名与 CLI flag 差异大 |
+| `search-guild-feeds` | `cookie` | `--next-page-cookie` | stdin JSON 字段名与 CLI flag 差异大；**需已加入该频道** |
 
 > **翻页安全规则**：翻页时严格用上次返回的字段名和值原样传回，不要跨命令复用翻页令牌。
 
@@ -89,6 +97,10 @@
 | alter-feed @用户 | 支持 `--at-user tinyid:昵称` CLI flag（可多次指定），与 publish-feed 一致 |
 | 裸 URL 写入正文 | **禁止**在 `content` 里直接拼入裸 URL（如 `https://example.com`）——裸 URL 在帖子里原样显示为纯文本，不可点击。可点击链接必须用内联语法或 `--link` / `urls` 传入 |
 | 长贴不支持话题标签 | CLI 在发帖/编辑时如检测到话题参数（`topic_names` / `--topic-name` / `#[话题]()` 语法）会直接报错拦截，请改用短贴或移除话题参数 |
+| alter-feed 编辑 Markdown 帖子 | `alter-feed` 获取原帖后检测 `is_markdown=true` 时：(1) `--content` / `content_file` 会被直接拒绝（报错：Markdown 帖子不可用纯文本模式编辑，请改用 `--markdown-content`）；(2) 提供 `--markdown-content` 则以新 Markdown 内容更新；(3) 不传任何内容参数则自动继承原 Markdown 源码（仅改标题/媒体/话题等）。反之，**纯文本帖子不接受 `--markdown-content`** |
+| Markdown 短贴不能嵌入媒体 | **短贴**（feed_type=1）的 `--markdown-content` 中**禁止**使用 `[(0,N)](@img)`、`[video:N]`、`[](mqqapi://markdown/node?id=video...)` 等嵌入语法——这些语法仅用于**长贴**。短贴的图片/视频必须通过 `--image`/`--video` 传入，以附件形式附到帖子尾部。在 markdown 正文中嵌入后又通过 `--video` 传入同一视频，会导致视频在帖子中出现两次（markdown 渲染一次 + 附件一次）。CLI 会直接报错拦截 |
+| `search-guild-feeds` 需加入频道 | `search-guild-feeds` 只能搜索**已加入**的频道。对未加入的频道执行会返回 `retCode=130000`（搜索失败）。遇到此错误时，提示用户先通过 `search-and-join` 或 `manage search-guild-content` 找到并加入目标频道，再重试搜索 |
+| 评论/回复无互动权限 | `do-comment` / `do-reply` 返回 `retCode=20006`（"加入频道后可互动"）时，说明该频道未开放访客互动。**不做前置检查**，报错后告知用户：该频道需先加入才能评论/回复，可通过 `manage search-and-join` 加入后重试 |
 
 ## 内嵌链接与 @ 语法
 
@@ -137,11 +149,23 @@ tencent-channel-cli feed do-comment \
 | 参数 | 语法 | 适用命令 |
 |------|------|---------|
 | `--link url\|显示文字` | CLI flag，可多次指定 | 所有写入命令 |
-| `--at-user tinyid:昵称` | CLI flag，可多次指定 | 所有写入命令 |
+| `--at-user tinyid:昵称` | CLI flag，可多次指定 | 所有写入命令（**Markdown 模式除外**） |
 | `urls` (stdin JSON) | `[{"url":"…","displayText":"…"}]` | 所有写入命令 |
-| `at_users` (stdin JSON) | `[{"id":"tinyid","nick":"昵称"}]` | 所有写入命令 |
+| `at_users` (stdin JSON) | `[{"id":"tinyid","nick":"昵称"}]` | 所有写入命令（**Markdown 模式除外**） |
 
 **注意**：独立参数中的链接/@ 被追加在正文**末尾**，位置不可控；如需精确控制位置，用内联语法。
+
+### Markdown 模式 @用户
+
+`--markdown-content` 中 @用户的语法与纯文本模式**不同**，裸 `@昵称` 不会蓝显。必须使用：
+
+| 语法 | 示例 |
+|------|------|
+| `[@昵称](mqqapi://markdown/mention?at_type=1&at_tinyid=<tinyid>)` | `[@张三](mqqapi://markdown/mention?at_type=1&at_tinyid=144115219800577368)` |
+
+缺少 tinyid 时，先调 `guild_member_search` 按昵称查询获取。
+
+> ⚠️ Markdown 模式下传 `--at-user` 或 `at_users` 会被 CLI 直接报错拦截，必须改用上面的 mqqapi 格式。
 
 **用户自然语言 → 参数组装规则：**
 
@@ -149,6 +173,8 @@ tencent-channel-cli feed do-comment \
 - 用户说「把 X 做成超链接」→ 内联写 `[X](X)` 或根据上下文取文案
 - 用户说「@张三」→ 先查 `tiny_id`，再内联写 `@[张三](tinyid)` 放入 content
 - `content` 字段只写正文文字和内联标记，**禁止**把裸 URL 拼入正文
+- **用户只提供了 URL、未给显示文字时**：用 WebFetch 抓取该页面的 `<title>` 作为显示文字，再内联写入 content 或组装 `urls`/`--link`。抓取失败时以 URL 本身兜底
+- **用户消息或提供的内容里包含裸 URL 时**：主动识别，询问用户是否转换为可点击链接；确认后用 WebFetch 抓取页面标题作为显示文字，从正文中移除裸 URL，改用内联语法或 `urls`/`--link` 传入
 
 ## 自动化运营
 

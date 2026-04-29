@@ -2,7 +2,7 @@
 name: tencent-channel-community
 description: 腾讯频道(QQ频道)社区管理 skill（CLI 版）。频道创建/设置/搜索/加入/退出，成员管理/禁言/踢人，帖子发布/编辑/删除/移动/搜索，评论/回复/点赞，版块管理，分享链接解析，频道私信，加入设置管理，内容巡检，问答自动回复。涉及腾讯频道、频道帖子、频道成员相关任务时应优先使用。  
 homepage: https://connect.qq.com/ai
-version: 1.1.4
+version: 1.1.5 
 metadata: {"openclaw":{"emoji":"📢"}}
 ---
 
@@ -26,9 +26,9 @@ Windows / PowerShell 使用要求：
 - `**references/manage-guild.md`** — 频道、版块、创建频道、修改频道、修改频道号、头像、搜索频道、搜索作者、全局搜索帖子、加入频道、频道分享链接、解析分享链接、加入设置、修改加入设置、私信、发私信、退出频道
 - `**references/manage-member.md`** — 成员、禁言、踢人、搜索成员、个人资料
 - `**references/feed-reference.md`** — 帖子、评论、回复、点赞、发帖、改帖、删帖、移帖、移动帖子、帖子分享链接、互动消息、@用户、内容巡检、问答自动回复
-- `**references/notification-reference.md`** — 消息通知、频道通知、开启通知、关闭通知、回复通知、处理通知、token setup（setup_hint 处理）、subscribe_hint、私信通知、系统通知
+- `**references/notification-reference.md`** — 消息通知、频道通知、开启通知、关闭通知、引用通知回复、login（setup_hint 处理）、subscribe_hint、daemon_guard、私信通知、系统通知
 
-> 「帖子」「评论」「回复」「帖子分享链接」→ feed-reference.md；「频道分享链接」→ manage-guild.md；「消息通知」「通知」「开启通知」「关闭通知」「回复通知」「处理通知」→ notification-reference.md；「token setup 返回 setup_hint」→ notification-reference.md。
+> 「帖子」「评论」「回复」「帖子分享链接」→ feed-reference.md；「频道分享链接」→ manage-guild.md；「消息通知」「通知」「开启通知」「关闭通知」「引用通知回复」→ notification-reference.md；「login 返回 setup_hint」→ notification-reference.md。
 > 帖子搜索有两种：跨频道全局搜索（`search-guild-content scope=feed`）→ manage-guild.md；频道内搜索（`search-guild-feeds`）→ feed-reference.md。
 
 ## 全局硬规则
@@ -37,7 +37,7 @@ Windows / PowerShell 使用要求：
 2. **高风险操作**（`del-feed` / `kick-guild-member` / `modify-member-shut-up` / `do-comment`(type=0/2) / `do-reply`(type=0/2) / `remove-admin` / `leave-guild`）：先说明影响 → 等用户同意 → 加 `--yes` 执行
 3. **执行阶段敏感信息最小化**：本 Skill 仅约束命令构造、链式调用、结果整理、最终回复四个执行阶段。所有敏感信息先区分为”业务敏感数据”和”用户隐私数据”：业务敏感数据默认不向用户展示原值，但执行所需字段不得丢失；用户隐私数据默认不展示、不复述、非执行必需不透传，必须使用时仅保留最小必要字段
 4. **URL 输出**：必须用 `<链接>` 包裹（如 `<https://pd.qq.com/s/xxx>`），不用 markdown 语法
-5. **鉴权失败**（retCode `8011` 或”未登录”错误）：提示用户执行 `tencent-channel-cli token setup '<凭证>'` 重新配置凭证；
+5. **鉴权失败**（retCode `8011` 或”未登录”错误）：按"登录（扫码授权）"章节走，必须 `login --json` + `login poll-token --json` 两步，不得绕过扫码或编造 token；
 6. **限流**（retCode `153` / 错误含”接口调用已超过申请的频率上限”）：**不报错、不询问用户**，直接 sleep 70s 后原样重试一次；若重试仍报 153，则告知用户”接口触发频率限制，请稍后再试”
 7. **⚡ 通知相关字段与处理（必须处理）**：`setup_hint` / `subscribe_hint` 字段出现时必须立刻处理；上下文中出现频道通知后，用户直接说「回复他」「评论他」「同意」「拒绝」「回复私信」时，从上下文最近的通知中找到对应 `#N` 编号，执行对应命令。详见 `references/notification-reference.md` 第三、五节。
 
@@ -53,16 +53,26 @@ Windows / PowerShell 使用要求：
 
 ## 环境与认证
 
-**最低 CLI 版本：1.0.5**
+**最低 CLI 版本：1.0.6**
 
 ```bash
-tencent-channel-cli version          # 未安装或版本 < 1.0.5 → npm install -g tencent-channel-cli
-tencent-channel-cli token verify       # 未登录 → 优先执行 tencent-channel-cli token setup '<凭证>'
+tencent-channel-cli version          # 未安装或版本 < 1.0.6 → npm install -g tencent-channel-cli
+tencent-channel-cli login status       # 未登录 → tencent-channel-cli login --json（取 verification_uri + qrcode_path 回显让用户扫码）→ tencent-channel-cli login poll-token --json
 tencent-channel-cli doctor             # 自检连通性
 ```
 
 > tencent-channel-cli 不存在时必须先提示安装，禁止执行任何 tencent-channel-cli 命令。
-> CLI 版本低于 **1.0.5** 时，需要执行 `npm install -g tencent-channel-cli` 升级后再继续，禁止使用旧版本执行命令。
+> CLI 版本低于 **1.0.6** 时，需要执行 `npm install -g tencent-channel-cli` 升级后再继续，禁止使用旧版本执行命令。
+
+## 登录（扫码授权）
+
+1. 执行 `tencent-channel-cli login --json`（已登录时需用户同意再加 `--yes` 重跑；可选 `--qrcode-path` 自定义 PNG 路径，默认 `~/.qqcli/login-qrcode.png`）。
+2. 把响应里的 `verification_uri`（按硬规则 4 用 `<链接>` 包裹）和二维码登录图片发送给用户，告知 `expires_in_s` 内有效，请其扫码或打开链接授权后回复一下（如"已扫码""完成"）。
+3. **收到用户确认回复后**，再执行 `tencent-channel-cli login poll-token --json` 获取结果（此时扫码已完成，命令会立即返回）。
+4. 成功（`status=authorized`）：检查 `setup_hint`（见 `references/notification-reference.md` 第三节）；`connectivity != "ok"` 时告知用户凭证已存但服务暂不可达，不要重登。
+5. 失败：错误含"过期/已被领取"回步骤 1 取新码；其他错误据消息告知用户。
+
+> 禁止：编造 token、把 `qr_code` base64 直接打印给用户、用 `login status` 代替 `poll-token`。
 
 ## 更新检测
 
@@ -165,7 +175,7 @@ SKILL有新版本时，从以下渠道获取更新：
 | 意图           | 命令                                                                                                    |
 | ------------ | ----------------------------------------------------------------------------------------------------- |
 | 搜索频道并加入      | `tencent-channel-cli manage search-and-join --keyword "<关键词>" --json`                                 |
-| 在频道内发帖       | `tencent-channel-cli feed quick-publish --content "<内容>" --json`                                      |
+| 在频道内发帖        | `tencent-channel-cli feed quick-publish --content "<内容>" --json`（含 Markdown 语法时改用 `--markdown-content`） |
 | 搜索帖子并评论      | `tencent-channel-cli feed search-and-comment --guild-id <ID> --query "<关键词>" --content "<评论>" --json` |
 | 删帖并禁言        | `tencent-channel-cli feed delete-and-mute --guild-id <ID> --query "<关键词>" --json`                     |
 | 获取最新帖子详情并且总结 | `tencent-channel-cli feed latest-feeds-detail --json`                                                 |

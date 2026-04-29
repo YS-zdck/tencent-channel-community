@@ -12,7 +12,7 @@
   简体中文 | <a href="./README_EN.md">English</a>
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.4-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.5-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -50,8 +50,8 @@
 
 - **浏览帖子** - 浏览频道主页或指定板块的帖子列表，支持翻页
 - **帖子详情** - 查看帖子详情、评论与回复，支持单独获取帖子分享短链
-- **发布编辑** - 发帖、改帖、删帖、移帖（支持图片/视频帖子）
-- **内联语法** - 正文内嵌可点击链接 `[文本](url)` 与 @用户 `@[昵称](tinyid)`，评论/回复同样支持
+- **发布编辑** - 发帖、改帖、删帖、移帖（支持文字、Markdown、图片/视频帖子）
+- **内联语法** - 正文内嵌可点击链接 `[文本](url)` 与 @用户，评论/回复同样支持；Markdown 模式需使用专用 @ 语法
 - **话题标签** - 短贴支持 `#话题`，长贴不支持
 - **互动功能** - 评论、回复、点赞、精华、置顶
 - **运营工具** - 内容巡检、问答类自动回复
@@ -62,7 +62,7 @@
 - **多通道订阅** - 可从不同通道（如 QQBot、飞书）分别开启，各通道独立路由并行推送
 - **三类通知** - 互动消息（顶帖/点赞/评论/回复/@）、系统消息（加入申请等）、私信消息
 - **快捷处理** - 上下文出现通知后，直接说「回复他」「评论他」「同意」「拒绝」「回复私信」即可一步完成
-- **Token 安全** - 更换 Token 时自动停止通知服务并清理本地状态
+- **Token 安全** - 重新登录或更换账号时自动停止通知服务并清理本地订阅状态
 
 ---
 
@@ -81,9 +81,21 @@
 
 ```bash
 tencent-channel-cli version            # 检查是否安装
-tencent-channel-cli token verify       # 验证登录状态
+tencent-channel-cli login status       # 检查登录状态
 tencent-channel-cli doctor             # 自检连通性
 ```
+
+### 登录授权
+
+未登录或鉴权失败时，请使用扫码授权登录：
+
+```bash
+tencent-channel-cli login --json
+# 扫码或打开返回的 verification_uri 完成授权后：
+tencent-channel-cli login poll-token --json
+```
+
+`login --json` 会返回登录链接和二维码图片路径。请在有效期内完成授权，再执行 `login poll-token --json` 获取登录结果。
 
 ### Windows / PowerShell
 
@@ -200,7 +212,7 @@ tencent-channel-cli doctor             # 自检连通性
 | 意图 | 命令 |
 |------|------|
 | 搜索频道并加入 | `tencent-channel-cli manage search-and-join --keyword "<关键词>" --json` |
-| 在频道内发帖 | `tencent-channel-cli feed quick-publish --content "<内容>" --json` |
+| 在频道内发帖 | `tencent-channel-cli feed quick-publish --content "<内容>" --json`（含 Markdown 语法时改用 `--markdown-content`） |
 | 搜索帖子并评论 | `tencent-channel-cli feed search-and-comment --guild-id <ID> --query "<关键词>" --content "<评论>" --json` |
 | 删帖并禁言 | `tencent-channel-cli feed delete-and-mute --guild-id <ID> --query "<关键词>" --json` |
 | 获取最新帖子详情并总结 | `tencent-channel-cli feed latest-feeds-detail --json` |

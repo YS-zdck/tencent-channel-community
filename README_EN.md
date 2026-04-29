@@ -12,7 +12,7 @@
   <a href="./README.md">简体中文</a> | English
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.4-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.5-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License">
 </p>
@@ -49,8 +49,8 @@ All operations are invoked via `tencent-channel-cli <domain> <action>`, supporti
 
 - **Browse Posts** - Browse channel homepage posts or posts in a specific sub-channel with pagination support
 - **Post Details** - View post details, comments, and replies, with standalone post share-link retrieval
-- **Publishing & Editing** - Create, edit, delete, and move posts (text, image, and video)
-- **Inline Syntax** - Clickable links via `[text](url)` and mentions via `@[name](tinyid)` in post body, comments, and replies
+- **Publishing & Editing** - Create, edit, delete, and move posts (plain text, Markdown, image, and video)
+- **Inline Syntax** - Clickable links via `[text](url)` and mentions in post body, comments, and replies; Markdown mode uses dedicated mention syntax
 - **Topic Tags** - `#topic` tags supported on short posts only; long posts are not supported
 - **Interactions** - Comment, reply, like, set essence, and pin posts
 - **Operations Tools** - Content inspection and Q&A auto-reply tools
@@ -61,7 +61,7 @@ All operations are invoked via `tencent-channel-cli <domain> <action>`, supporti
 - **Multi-channel Subscriptions** - Open subscriptions from different channels (e.g. QQBot, Feishu); each channel routes independently
 - **Three Categories** - Interaction (pins / likes / comments / replies / mentions), system messages (join requests, etc.), and direct messages
 - **Quick Actions** - When notifications appear in context, say "reply", "comment", "approve", "refuse", or "reply DM" to act in one step
-- **Token Safety** - Switching tokens automatically stops the daemon and clears local subscription state
+- **Token Safety** - Re-login or account switching automatically stops the daemon and clears local subscription state
 
 ---
 
@@ -80,9 +80,21 @@ Get the one-click installation command from [https://connect.qq.com/ai](https://
 
 ```bash
 tencent-channel-cli version            # Check installation
-tencent-channel-cli token verify       # Verify login status
+tencent-channel-cli login status       # Check login status
 tencent-channel-cli doctor             # Run connectivity self-check
 ```
+
+### Login Authorization
+
+When not logged in or when authentication fails, use QR-code authorization:
+
+```bash
+tencent-channel-cli login --json
+# After scanning the QR code or opening the returned verification_uri:
+tencent-channel-cli login poll-token --json
+```
+
+`login --json` returns a verification link and QR-code image path. Complete authorization before expiration, then run `login poll-token --json` to get the login result.
 
 ### Windows / PowerShell
 
@@ -199,7 +211,7 @@ Shortcut commands combine multi-step operations into a single call for improved 
 | Intent | Command |
 |--------|---------|
 | Search and join a channel | `tencent-channel-cli manage search-and-join --keyword "<keyword>" --json` |
-| Quick publish a post | `tencent-channel-cli feed quick-publish --content "<content>" --json` |
+| Quick publish a post | `tencent-channel-cli feed quick-publish --content "<content>" --json` (use `--markdown-content` when the content contains Markdown syntax) |
 | Search posts and comment | `tencent-channel-cli feed search-and-comment --guild-id <ID> --query "<keyword>" --content "<comment>" --json` |
 | Delete post and mute author | `tencent-channel-cli feed delete-and-mute --guild-id <ID> --query "<keyword>" --json` |
 | Get latest post details for summarization | `tencent-channel-cli feed latest-feeds-detail --json` |

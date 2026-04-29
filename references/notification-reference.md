@@ -26,7 +26,7 @@ CLI 在**首次安装或版本升级后**第一次使用时引导用户开启频
 
 以下 hint 字段出现在 CLI 返回的 JSON 中时，Agent **必须立刻处理**，不得忽略：
 
-**`setup_hint` 字段**（出现在 `token setup` 返回结果中）：
+**`setup_hint` 字段**（出现在 `login` / `login poll-token` 返回结果中）：
 - 表示用户刚完成登录但尚未开启频道消息通知
 - Agent 收到此字段时**必须**：
   1. 向用户展示 `setup_hint.message` 内容（如"登录成功！建议开启频道消息通知"）
@@ -147,7 +147,26 @@ CLI 在**首次安装或版本升级后**第一次使用时引导用户开启频
 
 ## 六、Token 更换与通知订阅
 
-当用户更换 token（通过 `token setup`、`login`、`login token` 等任何方式）时，**频道消息通知会被自动关闭**。
+- **水位线模型**：每个通知源（interact/system/dm）维护一个时间戳水位线（`watermark`），只拉取水位线之后的通知
+- **同秒去重**：水位线边界上可能有多条同秒通知，通过 `idsAtWatermark` 集合去重
+- **首次拉取保护**：水位线为 0 时只建立基线不推送，避免开启通知时涌入历史消息
+- **只关心"是否推送过"**：不关心用户是否在频道客户端已读
+- **基线按通知源分区**：interact（互动通知）/ system（系统消息）/ dm（私信），每个分区独立管理水位线
+
+## 八、本地文件说明
+
+| 文件 | 路径 | 作用 |
+|------|------|------|
+| `state.json` | `~/.qqcli/subscription/` | 订阅状态（是否激活、订阅的 guild_id） |
+| `baseline.json` | `~/.qqcli/subscription/` | 已推送通知 ID 集合（按通知源分区） |
+| `subscription_route.json` | `~/.qqcli/subscription/` | 推送路由（channel + to，OpenClaw 模式） |
+| `daemon.pid` | `~/.qqcli/subscription/` | 通知服务 PID（OpenClaw 模式） |
+| `daemon.log` | `~/.qqcli/subscription/` | 通知服务运行日志（OpenClaw 模式） |
+| `heartbeat` | `~/.qqcli/subscription/` | 通知服务心跳时间戳 |
+
+## 九、Token 更换与通知订阅
+
+当用户更换 token（通过 `login` / `login logout` 后重新登录等任何方式）时，CLI 会**自动停止通知服务并清理所有订阅文件**。
 
 **Agent 行为规范（⚠️ 必须遵守！）**：
 - Token 更换后，**不要自动重新订阅通知**
@@ -210,4 +229,4 @@ Daemon 进程包含两个并发协程：**主循环**负责拉取和推送，**�
 
 | 提示 / 错误 | 处理 |
 |-------------|------|
-| MCP 鉴权失败（retCode `8011`） | 执行 `tencent-channel-cli token setup` 重新配置凭证 → `tencent-channel-cli doctor` 确认 |
+| MCP 鉴权失败（retCode `8011`） | 执行 `tencent-channel-cli login` 重新登录（agent 用 `login --json` 获取 `verification_uri` / `qrcode_path` 回显给用户扫码 → `login poll-token --json`）→ `tencent-channel-cli doctor` 确认 |
